@@ -1,33 +1,23 @@
+import java.net.*;
+import java.io.*;
+
 public class Iperfer {
+    private static final int CHUNK_SIZE = 1000;
+
     public static void main(String[] args) {
         // parse arguments
         int mode = parseArgs(args);
 
         if (mode == 1) {
-            // client functionality
+            String hostname = args[2];
+            int port = Integer.parseInt(args[4]);
+            int time = Integer.parseInt(args[6]);
+            client(hostname, port, time);
         } else {
-            // server functionality
+            int port = Integer.parseInt(args[2]);
+            server(port);
         } 
-
-        /**
-         * Client Functionality
-         * - establish a TCP connection with server and send data asap (within <time>)
-         * - data read in 1000 byte chunks
-         * - data is a byte array of all 0s
-         * - keep running total of bytes sent
-         * - after <time> ends, stop sending data and close connection
-         * - print summary containing <total bytes sent> and <rate traffic could be sent>
-         */ 
-
-         /**
-          * Server Functionality
-          * - listen for TCP connections from a client
-          * - receive data asap until client closes connection
-          * - data read in 1000 byte chunks
-          * - keep running total of bytes received
-          * - print summary containing <total bytes received> and <rate traffic could be read>
-          * - server should shutdown after handling 1 connection
-          */
+         
     }
 
     public static int parseArgs(String[] args) {
@@ -53,5 +43,38 @@ public class Iperfer {
         }
 
         return -1;
+    }
+        
+    /**
+     * Client Functionality
+     * - establish a TCP connection with server and send data asap (within time)
+     * - data read in 1000 byte chunks
+     * - data is a byte array of all 0s
+     * - keep running total of bytes sent
+     * - after time ends, stop sending data and close connection
+     * - print summary containing total bytes sent and rate traffic could be sent
+     */ 
+    public static void client(String hostname, int port, int time) {
+        int[] data = new int[CHUNK_SIZE];
+        
+        Socket clientSocket = new Socket(hostname, port); 
+
+        long endTime = System.currentTimeMillis() + (time * 1000);
+        while (System.currentTimeMillis() < endTime) {
+            
+        }
+    }
+
+    /**
+     * Server Functionality
+     * - listen for TCP connections from a client
+     * - receive data asap until client closes connection
+     * - data read in 1000 byte chunks
+     * - keep running total of bytes received
+     * - print summary containing total bytes received and rate traffic could be read
+     * - server should shutdown after handling 1 connection
+     */
+    public static void server(int port) {
+
     }
 }
