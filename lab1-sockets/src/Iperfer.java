@@ -1,6 +1,13 @@
 public class Iperfer {
     public static void main(String[] args) {
-        System.out.println("Hello, World!");
+        // parse arguments
+        int mode = parseArgs(args);
+
+        if (mode == 1) {
+            // client functionality
+        } else {
+            // server functionality
+        } 
 
         /**
          * Client Functionality
@@ -10,16 +17,7 @@ public class Iperfer {
          * - keep running total of bytes sent
          * - after <time> ends, stop sending data and close connection
          * - print summary containing <total bytes sent> and <rate traffic could be sent>
-         * 
-         * Client Flags
-         * - invoke format: java Iperfer -c -h <server hostname> -p <server port> -t <time>
-         * - 1024 <= server port <= 65535
-         * 
-         * Client Exceptions
-         * - missing/additional arguments
-         * - invalid <server port> number
-         * - time and hostname are up to us to decide what is reasonable
-         */
+         */ 
 
          /**
           * Server Functionality
@@ -29,14 +27,31 @@ public class Iperfer {
           * - keep running total of bytes received
           * - print summary containing <total bytes received> and <rate traffic could be read>
           * - server should shutdown after handling 1 connection
-          *
-          * Server Flags
-          * - java Iperfer -s -p <listen port>
-          * - 1024 <= listen port <= 65535
-          *
-          * Server Exceptions
-          * - missing/additional arguments
-          * - invalid <listen port> number
           */
+    }
+
+    public static int parseArgs(String[] args) {
+        if (args.length > 0 && args[0].equals("-c") && args.length == 7 && args[1].equals("-h") && args[3].equals("-p") && args[5].equals("-t")) {
+            int portNumber = Integer.parseInt(args[4]); 
+            if (portNumber < 1024 || portNumber > 65535) {
+                System.out.println("Error: port number must be in the range 1024 to 65535");
+                System.exit(0);
+            }
+
+            return 1;
+        } else if (args.length > 0 && args[0].equals("-s") && args.length == 3 && args[1].equals("-p")) {
+            int portNumber = Integer.parseInt(args[2]); 
+            if (portNumber < 1024 || portNumber > 65535) {
+                System.out.println("Error: port number must be in the range 1024 to 65535");
+                System.exit(0);
+            }
+
+            return 0;
+        } else {
+            System.out.println("Error: invalid arguments");
+            System.exit(0);
+        }
+
+        return -1;
     }
 }
