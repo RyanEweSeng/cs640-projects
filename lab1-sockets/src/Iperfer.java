@@ -55,14 +55,23 @@ public class Iperfer {
      * - print summary containing total bytes sent and rate traffic could be sent
      */ 
     public static void client(String hostname, int port, int time) {
-        int[] data = new int[CHUNK_SIZE];
-        
-        Socket clientSocket = new Socket(hostname, port); 
-
-        long endTime = System.currentTimeMillis() + (time * 1000);
-        while (System.currentTimeMillis() < endTime) {
-            
-        }
+        byte[] data = new byte[CHUNK_SIZE];
+        Socket socket = null;
+        try {
+        	socket = new Socket(hostname, port);
+            DataOutputStream out = null;
+			out = new DataOutputStream(socket.getOutputStream());
+			long endTime = System.currentTimeMillis() + (time * 1000);
+	        while (System.currentTimeMillis() < endTime) {
+	        	out.write(data);
+	        }
+	        out.close();
+	        socket.close();
+		} catch (UnknownHostException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		} 
     }
 
     /**
@@ -75,6 +84,20 @@ public class Iperfer {
      * - server should shutdown after handling 1 connection
      */
     public static void server(int port) {
+    	
+    	ServerSocket socket;
+		try {
+			socket = new ServerSocket(port);
+	    	Socket clientSocket = socket.accept(); // Listen for a connection
+	    	DataInputStream in = new DataInputStream(clientSocket.getInputStream());
+	    	while (!clientSocket.isClosed()) {
+	    		System.out.println(in.readInt());
+	    	}
+	    	in.close(); clientSocket.close(); socket.close(); // Close connection
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} 
 
     }
 }
