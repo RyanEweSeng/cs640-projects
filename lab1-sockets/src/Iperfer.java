@@ -1,4 +1,6 @@
 import java.net.*;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.io.*;
 
 public class Iperfer {
@@ -11,7 +13,7 @@ public class Iperfer {
         if (mode == 1) {
             String hostname = args[2];
             int port = Integer.parseInt(args[4]);
-            int time = Integer.parseInt(args[6]);
+            float time = Float.parseFloat(args[6]);
             client(hostname, port, time);
         } else {
             int port = Integer.parseInt(args[2]);
@@ -48,25 +50,34 @@ public class Iperfer {
     /**
      * Client Functionality
      * - establish a TCP connection with server and send data asap (within time)
-     * - data read in 1000 byte chunks
+     * - data sent in 1000 byte chunks
      * - data is a byte array of all 0s
      * - keep running total of bytes sent
      * - after time ends, stop sending data and close connection
      * - print summary containing total bytes sent and rate traffic could be sent
      */ 
-    public static void client(String hostname, int port, int time) {
+    public static void client(String hostname, int port, float time) {
         byte[] data = new byte[CHUNK_SIZE];
-        Socket socket = null;
         try {
-        	socket = new Socket(hostname, port);
-            DataOutputStream out = null;
-			out = new DataOutputStream(socket.getOutputStream());
-			long endTime = System.currentTimeMillis() + (time * 1000);
+        	Socket socket = new Socket(hostname, port);
+            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+            
+	    	long totalBytesSent = 0;
+			long endTime = System.currentTimeMillis() + (long) (time * 1000);
+			long startTime = endTime - (long) (time * 1000);
 	        while (System.currentTimeMillis() < endTime) {
 	        	out.write(data);
+	        	totalBytesSent += 1000;
 	        }
 	        out.close();
 	        socket.close();
+	        	        
+	        long totalMegaBitsSent = (totalBytesSent * 8) / 1000000;
+	        float durationSec = (float) (endTime - startTime) / 1000;
+	        float bandwidth = totalMegaBitsSent / durationSec;
+	        
+	        System.out.print("sent=" + (totalBytesSent / CHUNK_SIZE) + " KB ");
+	        System.out.println("rate=" + bandwidth + " Mbps"); 
 		} catch (UnknownHostException e) {
 			e.printStackTrace();
 		} catch (IOException e) {
@@ -84,18 +95,31 @@ public class Iperfer {
      * - server should shutdown after handling 1 connection
      */
     public static void server(int port) {
-    	
-    	ServerSocket socket;
 		try {
-			socket = new ServerSocket(port);
+			ServerSocket socket = new ServerSocket(port);
 	    	Socket clientSocket = socket.accept(); // Listen for a connection
 	    	DataInputStream in = new DataInputStream(clientSocket.getInputStream());
-	    	while (!clientSocket.isClosed()) {
-	    		System.out.println(in.readInt());
+	    	
+	    	int totalBytesReceived = 0;
+	    	int read = 0;
+	    	long startTime = System.currentTimeMillis();
+	    	while (read != -1) {
+	    		byte[] chunk = new byte[CHUNK_SIZE];
+	    		read = in.read(chunk, 0, CHUNK_SIZE);
+	    		if (read != -1) totalBytesReceived += 1000;
 	    	}
-	    	in.close(); clientSocket.close(); socket.close(); // Close connection
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
+	    	long endTime = System.currentTimeMillis();
+	    	in.close();
+	    	clientSocket.close();
+	    	socket.close();
+	    	
+	    	long totalMegaBitsReceived = (totalBytesReceived * 8) / 1000000;
+	    	float durationSec = (float) (endTime - startTime) / 1000;
+	    	float bandwidth = totalMegaBitsReceived / durationSec;
+	    	
+	        System.out.print("received=" + (totalBytesReceived / CHUNK_SIZE) + " KB ");
+	        System.out.println("rate=" + bandwidth + " Mbps"); 		
+	    } catch (IOException e) {
 			e.printStackTrace();
 		} 
 
