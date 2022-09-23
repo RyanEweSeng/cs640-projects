@@ -72,12 +72,15 @@ public class Iperfer {
 	        out.close();
 	        socket.close();
 	        	        
-	        long totalMegaBitsSent = (totalBytesSent * 8) / 1000000;
-	        float durationSec = (float) (endTime - startTime) / 1000;
-	        float bandwidth = totalMegaBitsSent / durationSec;
+	        long totalMbSent = (totalBytesSent * 8) / 1000000;
+	        float durationSec = (endTime - startTime) / (float) 1000;
+	        float bandwidth = totalMbSent / durationSec;
+
+            // System.out.println("duration: " + durationSec);
+            // System.out.println("Mb sent: " + totalMbSent);
 	        
 	        System.out.print("sent=" + (totalBytesSent / CHUNK_SIZE) + " KB ");
-	        System.out.println("rate=" + bandwidth + " Mbps"); 
+	        System.out.printf("rate= %.3f Mbps\n", bandwidth);
 		} catch (UnknownHostException e) {
 			e.printStackTrace();
 		} catch (IOException e) {
@@ -100,7 +103,7 @@ public class Iperfer {
 	    	Socket clientSocket = socket.accept(); // Listen for a connection
 	    	DataInputStream in = new DataInputStream(clientSocket.getInputStream());
 	    	
-	    	int totalBytesReceived = 0;
+	    	long totalBytesReceived = 0;
 	    	int read = 0;
 	    	long startTime = System.currentTimeMillis();
 	    	while (read != -1) {
@@ -113,12 +116,15 @@ public class Iperfer {
 	    	clientSocket.close();
 	    	socket.close();
 	    	
-	    	long totalMegaBitsReceived = (totalBytesReceived * 8) / 1000000;
-	    	float durationSec = (float) (endTime - startTime) / 1000;
-	    	float bandwidth = totalMegaBitsReceived / durationSec;
+	    	long totalMbReceived = (totalBytesReceived * 8) / 1000000;
+	    	float durationSec = (endTime - startTime) / (float) 1000;
+	    	float bandwidth = totalMbReceived / durationSec;
+
+            // System.out.println("duration: " + durationSec);
+            // System.out.println("Mb received: " + totalMbReceived * 8);
 	    	
 	        System.out.print("received=" + (totalBytesReceived / CHUNK_SIZE) + " KB ");
-	        System.out.println("rate=" + bandwidth + " Mbps"); 		
+	        System.out.printf("rate= %.3f Mbps\n", bandwidth);	
 	    } catch (IOException e) {
 			e.printStackTrace();
 		} 
