@@ -63,8 +63,8 @@ public class Iperfer {
             DataOutputStream out = new DataOutputStream(socket.getOutputStream());
             
 	    	long totalBytesSent = 0;
-			long endTime = System.currentTimeMillis() + (long) (time * 1000);
-			long startTime = endTime - (long) (time * 1000);
+			long startTime = System.currentTimeMillis();
+            long endTime = startTime + (long) (time * 1000);
 	        while (System.currentTimeMillis() < endTime) {
 	        	out.write(data);
 	        	totalBytesSent += 1000;
@@ -76,11 +76,13 @@ public class Iperfer {
 	        float durationSec = (endTime - startTime) / (float) 1000;
 	        float bandwidth = totalMbSent / durationSec;
 
-            // System.out.println("duration: " + durationSec);
+            System.out.println("start: " + startTime);
+            System.out.println("end: " + endTime);
+            System.out.println("duration: " + durationSec);
             // System.out.println("Mb sent: " + totalMbSent);
 	        
 	        System.out.print("sent=" + (totalBytesSent / CHUNK_SIZE) + " KB ");
-	        System.out.printf("rate= %.3f Mbps\n", bandwidth);
+	        System.out.printf("rate=%.3f Mbps\n", bandwidth);
 		} catch (UnknownHostException e) {
 			e.printStackTrace();
 		} catch (IOException e) {
@@ -105,13 +107,17 @@ public class Iperfer {
 	    	
 	    	long totalBytesReceived = 0;
 	    	int read = 0;
-	    	long startTime = System.currentTimeMillis();
+            long endTime = 0;
+            long startTime = System.currentTimeMillis();
 	    	while (read != -1) {
 	    		byte[] chunk = new byte[CHUNK_SIZE];
 	    		read = in.read(chunk, 0, CHUNK_SIZE);
-	    		if (read != -1) totalBytesReceived += 1000;
+	    		if (read == -1) {
+                    endTime = System.currentTimeMillis();
+                    break;
+                } else totalBytesReceived += read;
 	    	}
-	    	long endTime = System.currentTimeMillis();
+	    	
 	    	in.close();
 	    	clientSocket.close();
 	    	socket.close();
@@ -120,11 +126,13 @@ public class Iperfer {
 	    	float durationSec = (endTime - startTime) / (float) 1000;
 	    	float bandwidth = totalMbReceived / durationSec;
 
-            // System.out.println("duration: " + durationSec);
+            System.out.println("start: " + startTime);
+            System.out.println("end: " + endTime);
+            System.out.println("duration: " + durationSec);
             // System.out.println("Mb received: " + totalMbReceived * 8);
 	    	
 	        System.out.print("received=" + (totalBytesReceived / CHUNK_SIZE) + " KB ");
-	        System.out.printf("rate= %.3f Mbps\n", bandwidth);	
+	        System.out.printf("rate=%.3f Mbps\n", bandwidth);	
 	    } catch (IOException e) {
 			e.printStackTrace();
 		} 
