@@ -23,10 +23,28 @@ public class Iperfer {
         } 
          
     }
+    // validation method from stackoverflow: https://stackoverflow.com/questions/5667371/validate-ipv4-address-in-java
+    public static boolean validate(final String ip) {
+        String PATTERN = "^((0|1\\d?\\d?|2[0-4]?\\d?|25[0-5]?|[3-9]\\d?)\\.){3}(0|1\\d?\\d?|2[0-4]?\\d?|25[0-5]?|[3-9]\\d?)$";
+        return ip.matches(PATTERN);
+    }
 
     public static int parseArgs(String[] args) {
         if (args.length > 0 && args[0].equals("-c") && args.length == 7 && args[1].equals("-h") && args[3].equals("-p") && args[5].equals("-t")) {
-            int portNumber = Integer.parseInt(args[4]); 
+            int portNumber = Integer.parseInt(args[4]);
+            boolean isValidHostname = validate(args[2]);
+            if (!isValidHostname) {
+            	System.out.println("The hostname is invalid.");
+                System.exit(0);
+
+            }
+            // time must be positive
+            if (Integer.parseInt(args[6]) <= 0) {
+            	System.out.println("Please enter a valid amount of time.");
+                System.exit(0);
+
+            }
+            
             if (portNumber < 1024 || portNumber > 65535) {
                 System.out.println("Error: port number must be in the range 1024 to 65535");
                 System.exit(0);
