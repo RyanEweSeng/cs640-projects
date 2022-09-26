@@ -11,11 +11,13 @@ public class Iperfer {
         int mode = parseArgs(args);
 
         if (mode == 1) {
+            // client mode
             String hostname = args[2];
             int port = Integer.parseInt(args[4]);
             float time = Float.parseFloat(args[6]);
             client(hostname, port, time);
         } else {
+            // server mode
             int port = Integer.parseInt(args[2]);
             server(port);
         } 
@@ -126,9 +128,9 @@ public class Iperfer {
 	    	float durationSec = (endTime - startTime) / (float) 1000;
 	    	float bandwidth = totalMbReceived / durationSec;
 
-            System.out.println("start: " + startTime);
-            System.out.println("end: " + endTime);
-            System.out.println("duration: " + durationSec);
+            // System.out.println("start: " + startTime);
+            // System.out.println("end: " + endTime);
+            // System.out.println("duration: " + durationSec);
             // System.out.println("Mb received: " + totalMbReceived * 8);
 	    	
 	        System.out.print("received=" + (totalBytesReceived / CHUNK_SIZE) + " KB ");
