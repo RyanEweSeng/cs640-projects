@@ -76,9 +76,9 @@ public class Iperfer {
 	        float durationSec = (endTime - startTime) / (float) 1000;
 	        float bandwidth = totalMbSent / durationSec;
 
-            System.out.println("start: " + startTime);
-            System.out.println("end: " + endTime);
-            System.out.println("duration: " + durationSec);
+            // System.out.println("start: " + startTime);
+            // System.out.println("end: " + endTime);
+            // System.out.println("duration: " + durationSec);
             // System.out.println("Mb sent: " + totalMbSent);
 	        
 	        System.out.print("sent=" + (totalBytesSent / CHUNK_SIZE) + " KB ");
