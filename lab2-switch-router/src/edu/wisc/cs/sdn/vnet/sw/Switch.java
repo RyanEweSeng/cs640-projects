@@ -1,6 +1,7 @@
 package edu.wisc.cs.sdn.vnet.sw;
 
 import net.floodlightcontroller.packet.Ethernet;
+import net.floodlightcontroller.packet.MACAddress;
 import edu.wisc.cs.sdn.vnet.Device;
 import edu.wisc.cs.sdn.vnet.DumpFile;
 import edu.wisc.cs.sdn.vnet.Iface;
@@ -30,7 +31,7 @@ public class Switch extends Device implements Runnable {
 		 * @param port Iface of the incoming packet
 		 */
 		public PortInfo(Iface port) {
-			this.birth = System.currentTimeMilis();
+			this.birth = System.currentTimeMillis();
 			this.portID = port;
 		}
 	}
@@ -42,9 +43,14 @@ public class Switch extends Device implements Runnable {
 	private ConcurrentHashMap<MACAddress, PortInfo> table;
 
 	/**
-	 * Thread to check entry age at 1s intervals
+	 * Thread to check entry age at 1s intervals.
 	 */
 	private Thread thread;
+
+	/**
+	 * Flag to trigger debug statements (remember to set to 0 on submission).
+	 */
+	 private int dbg = 1;
 
 	/**
 	 * Iterates through the table and checks the ages of the entries;
@@ -53,12 +59,12 @@ public class Switch extends Device implements Runnable {
 	public void run() {
 		try {
 			while(true) {
-				for (Map.Entry<MACAddress, PortInfo> entry : table) {
+				for (Map.Entry<MACAddress, PortInfo> entry : table.entrySet()) {
 					PortInfo info = entry.getValue();
-					MACAddresss mac = entry.getKey();
+					MACAddress mac = entry.getKey();
 					
 					// calculate the age of the entry
-					long age = System.currentTimeMilis() - info.birth;
+					long age = System.currentTimeMillis() - info.birth;
 
 					// remove entry greater than 15s
 					if (age >= 15000) table.remove(mac);
@@ -91,20 +97,43 @@ public class Switch extends Device implements Runnable {
 	 * @param inIface the interface on which the packet was received
 	 */
 	public void handlePacket(Ethernet etherPacket, Iface inIface) {
-		System.out.println("*** -> Received packet: " +
-                etherPacket.toString().replace("\n", "\n\t"));
+		if (dbg == 1) {
+			System.out.println("###########################################################");
+			System.out.println("hostname: " + getHost());
+			System.out.println("*** -> Received packet: " + etherPacket.toString().replace("\n", "\n\t") + "\n");
+		}
+
+		if (dbg == 1) {
+			System.out.println("initial table");
+			printTable();
+		}
 
 		// whenever we receive a packet, we learn its MAC
 		learn(etherPacket, inIface);
 
+		if (dbg == 1) {
+			System.out.println("learning complete");
+			printTable();
+		}
+
 		// we look for the destination MAC in our table
+		Iface outputPort = searchTable(etherPacket);
+
+		if (dbg == 1) {
+			System.out.println("searching complete");
+			printTable();
+		}
+		
 		// if there is a match we forward, else broadcast
-		Iface outputPort = search(etherPacket.getDestinationMAC());
 		if (outputPort != null) {
+			if (dbg == 1) System.out.println("forwarding...");
 			sendPacket(etherPacket, outputPort);
 		} else {
+			if (dbg == 1) System.out.println("broadcasting...");
 			broadcast(etherPacket, inIface);
 		}
+
+		if (dbg == 1) System.out.println("###########################################################");
 	}
 
 	/**
@@ -114,12 +143,21 @@ public class Switch extends Device implements Runnable {
 	 * @param port the port we received the packet from
 	 */
 	private void learn(Ethernet etherPacket, Iface port) {
-		// create the PortInfo
-		PortInfo info = new PortInfo(port);
+		if (dbg == 1) System.out.print("learning...");
+
 		MACAddress macAddr = etherPacket.getSourceMAC();
 
-		// put entry into table
-		table.put(macAddr, info);
+		// we only want to learn a new mac
+		if (!table.containsKey(macAddr)) {
+			if (dbg == 1) System.out.println("learnt new MAC");
+
+			PortInfo info = new PortInfo(port);
+			table.put(macAddr, info);
+
+			return;
+		}
+
+		if (dbg == 1) System.out.println("already learnt");
 	}
 
 	/**
@@ -131,9 +169,9 @@ public class Switch extends Device implements Runnable {
 	private void broadcast(Ethernet etherPacket, Iface port) {
 		// iterate through all ports in the switch
 		Map<String, Iface> ports = getInterfaces();
-		for (Map.Entry<String, Iface> entry : ports) {
-			// skip the port which we received the packet from
+		for (Map.Entry<String, Iface> entry : ports.entrySet()) {
 			Iface p = entry.getValue();
+			// skip the port which we received the packet from
 			if (!p.equals(port)) sendPacket(etherPacket, p);
 		}
 
@@ -141,20 +179,48 @@ public class Switch extends Device implements Runnable {
 
 	/**
 	 * Searches the port forwarding table for the provided MAC address.
-	 * @param mac the MAC address to look for
+	 * @param etherPacket the incoming packet whose srcMAC and dstMAC are needed
 	 * @return the found port Iface object, otherwise null
 	 */
-	private Iface searchTable(MACAddress mac) {
-		if (table.containsKey(mac)) {
-			PortInfo info = table.get(mac);
+	private Iface searchTable(Ethernet etherPacket) {
+		if (dbg == 1) System.out.print("searching...");
 
-			// age should be reset when the MAC address is used
-			info.birth = System.currentTimeMilis();
+		MACAddress src = etherPacket.getSourceMAC();
+		MACAddress dst = etherPacket.getDestinationMAC();
+		
+		// we reset the age for the source MAC
+		if (table.containsKey(src)) {
+			if (dbg == 1) System.out.print("resetting source (" + src.toString() + ") age...");
 
+			PortInfo info = table.get(src);
+			info.birth = System.currentTimeMillis();
+		}
+
+		// we search for the destination MAC in the table
+		if (table.containsKey(dst)) {
+			if (dbg == 1) System.out.println("found");
+
+			PortInfo info = table.get(dst);
 			return info.portID;
 		} else {
+			if (dbg == 1) System.out.println("not found");
+
 			return null;
 		}
+	}
+
+	/**
+	 * Helper function to display the port forwarding table.
+	 */
+	private void printTable() {
+		System.out.println("-------------------------------------");
+		for (Map.Entry<MACAddress, PortInfo> entry : table.entrySet()) {
+			String mac = entry.getKey().toString();
+			String port = entry.getValue().portID.getName();
+			long age = System.currentTimeMillis() - entry.getValue().birth;
+			System.out.println(mac + "\t" + port + "\t" + age);
+		}
+		System.out.println("-------------------------------------\n");
 	}
 }
 
