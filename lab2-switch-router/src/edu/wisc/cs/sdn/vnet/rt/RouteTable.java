@@ -33,17 +33,33 @@ public class RouteTable
 	 * @param ip IP address
 	 * @return the matching route entry, null if none exists
 	 */
-	public RouteEntry lookup(int ip)
-	{
-		synchronized(this.entries)
-        {
-			/*****************************************************************/
-			/* TODO: Find the route entry with the longest prefix match      */
+	public RouteEntry lookup(int ip) {
+		synchronized(this.entries) {
+			// iterate through the route table
+			int bestAddr = -1;
+			RouteEntry bestEntry = null;
+			for (RouteEntry e : entries) {
+				int mask = e.getMaskAddress();
+				int out = e.getDestinationAddress();
+				
+				// AND the out address with the mask
+				int networkAddr = out & mask;
+
+				// AND the target address with the mask
+				int targetNetworkAddr = ip & mask;
+				
+				// if they match and its address has  a longer prefix, we update the best address and entry
+				if (targetNetworkAddr == networkAddr && networkAddr > bestAddr) {
+					bestAddr = networkAddr;
+					bestEntry = e;
+				}
+			}
+
+			System.out.println("bestAddr: " + bestAddr);
+			System.out.println(bestEntry.toString());
 			
-			return null;
-			
-			/*****************************************************************/
-        }
+			return bestEntry;
+    	}
 	}
 	
 	/**
