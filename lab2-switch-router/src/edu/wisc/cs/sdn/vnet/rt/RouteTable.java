@@ -54,9 +54,6 @@ public class RouteTable  {
 					bestEntry = e;
 				}
 			}
-
-			System.out.println("bestAddr: " + bestAddr);
-			System.out.println(bestEntry.toString());
 			
 			return bestEntry;
     	}
