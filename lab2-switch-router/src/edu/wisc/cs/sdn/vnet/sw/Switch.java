@@ -48,9 +48,9 @@ public class Switch extends Device implements Runnable {
 	private Thread thread;
 
 	/**
-	 * Flag to trigger debug statements (remember to set to 0 on submission).
+	 * Flag to trigger debug statements (remember to set to false on submission).
 	 */
-	 private int dbg = 1;
+	 private boolean dbg = true;
 
 	/**
 	 * Iterates through the table and checks the ages of the entries;
@@ -97,13 +97,13 @@ public class Switch extends Device implements Runnable {
 	 * @param inIface the interface on which the packet was received
 	 */
 	public void handlePacket(Ethernet etherPacket, Iface inIface) {
-		if (dbg == 1) {
+		if (dbg) {
 			System.out.println("###########################################################");
 			System.out.println("hostname: " + getHost());
 			System.out.println("*** -> Received packet: " + etherPacket.toString().replace("\n", "\n\t") + "\n");
 		}
 
-		if (dbg == 1) {
+		if (dbg) {
 			System.out.println("initial table");
 			printTable();
 		}
@@ -111,7 +111,7 @@ public class Switch extends Device implements Runnable {
 		// whenever we receive a packet, we learn its MAC
 		learn(etherPacket, inIface);
 
-		if (dbg == 1) {
+		if (dbg) {
 			System.out.println("learning complete");
 			printTable();
 		}
@@ -119,21 +119,21 @@ public class Switch extends Device implements Runnable {
 		// we look for the destination MAC in our table
 		Iface outputPort = searchTable(etherPacket);
 
-		if (dbg == 1) {
+		if (dbg) {
 			System.out.println("searching complete");
 			printTable();
 		}
 		
 		// if there is a match we forward, else broadcast
 		if (outputPort != null) {
-			if (dbg == 1) System.out.println("forwarding...");
+			if (dbg) System.out.println("forwarding...");
 			sendPacket(etherPacket, outputPort);
 		} else {
-			if (dbg == 1) System.out.println("broadcasting...");
+			if (dbg) System.out.println("broadcasting...");
 			broadcast(etherPacket, inIface);
 		}
 
-		if (dbg == 1) System.out.println("###########################################################");
+		if (dbg) System.out.println("###########################################################");
 	}
 
 	/**
@@ -143,13 +143,13 @@ public class Switch extends Device implements Runnable {
 	 * @param port the port we received the packet from
 	 */
 	private void learn(Ethernet etherPacket, Iface port) {
-		if (dbg == 1) System.out.print("learning...");
+		if (dbg) System.out.print("learning...");
 
 		MACAddress macAddr = etherPacket.getSourceMAC();
 
 		// we only want to learn a new mac
 		if (!table.containsKey(macAddr)) {
-			if (dbg == 1) System.out.println("learnt new MAC");
+			if (dbg) System.out.println("learnt new MAC");
 
 			PortInfo info = new PortInfo(port);
 			table.put(macAddr, info);
@@ -157,7 +157,7 @@ public class Switch extends Device implements Runnable {
 			return;
 		}
 
-		if (dbg == 1) System.out.println("already learnt");
+		if (dbg) System.out.println("already learnt");
 	}
 
 	/**
@@ -183,14 +183,14 @@ public class Switch extends Device implements Runnable {
 	 * @return the found port Iface object, otherwise null
 	 */
 	private Iface searchTable(Ethernet etherPacket) {
-		if (dbg == 1) System.out.print("searching...");
+		if (dbg) System.out.print("searching...");
 
 		MACAddress src = etherPacket.getSourceMAC();
 		MACAddress dst = etherPacket.getDestinationMAC();
 		
 		// we reset the age for the source MAC
 		if (table.containsKey(src)) {
-			if (dbg == 1) System.out.print("resetting source (" + src.toString() + ") age...");
+			if (dbg) System.out.print("resetting source (" + src.toString() + ") age...");
 
 			PortInfo info = table.get(src);
 			info.birth = System.currentTimeMillis();
@@ -198,12 +198,12 @@ public class Switch extends Device implements Runnable {
 
 		// we search for the destination MAC in the table
 		if (table.containsKey(dst)) {
-			if (dbg == 1) System.out.println("found");
+			if (dbg) System.out.println("found");
 
 			PortInfo info = table.get(dst);
 			return info.portID;
 		} else {
-			if (dbg == 1) System.out.println("not found");
+			if (dbg) System.out.println("not found");
 
 			return null;
 		}
