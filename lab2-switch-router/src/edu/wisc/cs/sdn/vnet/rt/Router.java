@@ -138,28 +138,41 @@ public class Router extends Device {
 		if (dbg) System.out.print("\nsearching route table...");
 
 		// Forward packet
+		Ethernet newPacket = (Ethernet) etherPacket.setPayload(header);
 		RouteEntry re = routeTable.lookup(headerDestIP);
 		if (re != null) {
 			if (dbg) System.out.println("entry found");
+			if (dbg) System.out.print("searching ARP cache...");
 
-			// determine the next-hop IP address and lookup the MAC address corresponding to that IP address from the ARP cache
 			ArpEntry ae = null;
 			if (re.getGatewayAddress() != 0) {
+				if (dbg) System.out.println("using gateway address");
+
 				// destination IP is in another network and we need to move across routers to reach it
 				ae = arpCache.lookup(re.getGatewayAddress());
 			} else {
+				if (dbg) System.out.println("using destination address");
+
+				// destination IP is on the local network
 				ae = arpCache.lookup(headerDestIP);
 			}
-			// updated the Ethernet header with the new source and destination MACs
-			header = header.setSourceAddress(re.getInterface().getMacAddress());
-			header = header.setDestinationAddress(ae.getMac());
 
+			if (dbg) System.out.println("updating MAC addresses...");
+
+			// updated the Ethernet header with the new source and destination MACs
+			newPacket = newPacket.setSourceMACAddress(re.getInterface().getMacAddress().toBytes());
+			newPacket = newPacket.setDestinationMACAddress(ae.getMac().toBytes());
+
+			if (dbg) System.out.println("sending packet...");
 
 			// send packet
+			sendPacket(newPacket, re.getInterface());
 		} else {
 			if (dbg) System.out.println("no entry found...dropping packet");
 
 			return;
 		}
+
+		if (dbg) System.out.println("###########################################################");
 	}
 }
