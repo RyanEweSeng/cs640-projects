@@ -9,8 +9,7 @@ import net.floodlightcontroller.packet.Ethernet;
 /**
  * @author Aaron Gember-Jacobson and Anubhavnidhi Abhashkumar
  */
-public class Router extends Device
-{	
+public class Router extends Device {	
 	/** Routing table for the router */
 	private RouteTable routeTable;
 	
@@ -21,8 +20,7 @@ public class Router extends Device
 	 * Creates a router for a specific host.
 	 * @param host hostname for the router
 	 */
-	public Router(String host, DumpFile logfile)
-	{
+	public Router(String host, DumpFile logfile) {
 		super(host,logfile);
 		this.routeTable = new RouteTable();
 		this.arpCache = new ArpCache();
@@ -31,17 +29,14 @@ public class Router extends Device
 	/**
 	 * @return routing table for the router
 	 */
-	public RouteTable getRouteTable()
-	{ return this.routeTable; }
+	public RouteTable getRouteTable() { return this.routeTable; }
 	
 	/**
 	 * Load a new routing table from a file.
 	 * @param routeTableFile the name of the file containing the routing table
 	 */
-	public void loadRouteTable(String routeTableFile)
-	{
-		if (!routeTable.load(routeTableFile, this))
-		{
+	public void loadRouteTable(String routeTableFile) {
+		if (!routeTable.load(routeTableFile, this)) {
 			System.err.println("Error setting up routing table from file "
 					+ routeTableFile);
 			System.exit(1);
@@ -57,10 +52,8 @@ public class Router extends Device
 	 * Load a new ARP cache from a file.
 	 * @param arpCacheFile the name of the file containing the ARP cache
 	 */
-	public void loadArpCache(String arpCacheFile)
-	{
-		if (!arpCache.load(arpCacheFile))
-		{
+	public void loadArpCache(String arpCacheFile) {
+		if (!arpCache.load(arpCacheFile)) {
 			System.err.println("Error setting up ARP cache from file "
 					+ arpCacheFile);
 			System.exit(1);
@@ -77,8 +70,7 @@ public class Router extends Device
 	 * @param etherPacket the Ethernet packet that was received
 	 * @param inIface the interface on which the packet was received
 	 */
-	public void handlePacket(Ethernet etherPacket, Iface inIface)
-	{
+	public void handlePacket(Ethernet etherPacket, Iface inIface) {
 		System.out.println("*** -> Received packet: " +
                 etherPacket.toString().replace("\n", "\n\t"));
 		
