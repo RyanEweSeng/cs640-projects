@@ -83,14 +83,8 @@ public class Router extends Device {
 			System.out.println("*** -> Received packet: " + etherPacket.toString().replace("\n", "\n\t") + "\n");
 		}
 
-		if (dbg) System.out.print("checking ether type...");
-
 		// check if it contains an IPv4 packet
-		if (etherPacket.getEtherType() != Ethernet.TYPE_IPv4) {
-			if (dbg) System.out.println("not IPv4...dropping packet");
-
-			return;
-		}
+		if (etherPacket.getEtherType() != Ethernet.TYPE_IPv4) return;
 
 		// get the payload
 		IPv4 header = (IPv4) etherPacket.getPayload();
@@ -103,76 +97,73 @@ public class Router extends Device {
 		byte[] serializedData = header.serialize();
 		header = (IPv4) header.deserialize(serializedData, 0, serializedData.length);
 		short computedChecksum = header.getChecksum();
-		
-		if (dbg) System.out.print("\nchecking checksum...");
 
 		// verify checksum
-		if (checksum != computedChecksum) {
-			if (dbg) System.out.println("checksum mismatch...dropping packet");
+		if (checksum != computedChecksum) return;
 
-			return;
-		}
-
-		if (dbg) System.out.print("\nchecking ttl...");
-
-		// decrement the IPv4 packet’s TTL by 1 and verify
-		header = header.setTtl((byte)(header.getTtl() - 1));
-		if (header.getTtl() == 0){
-			if (dbg) System.out.println("invalid ttl...dropping packet");
-
-			return;
-		}
-
-		if (dbg) System.out.print("\nchecking destination IP...");
+		// decrement the IPv4 packet's TTL by 1 and verify
+		byte origTtl = header.getTtl();
+		header = header.setTtl((byte)(origTtl - 1));
+		if (header.getTtl() == 0) return;
 
 		// check if destination IP exactly matches one of the interface's IP
 		int headerDestIP = header.getDestinationAddress();
 		for (Iface iface : interfaces.values()) {
-			if (iface.getIpAddress() == headerDestIP) {
-				if (dbg) System.out.println("exact match found...dropping packet");
-
-				return;
-			}
+			if (iface.getIpAddress() == headerDestIP) return;
 		}
 
-		if (dbg) System.out.print("\nsearching route table...");
+		if (dbg) {
+			System.out.println("checking ether type = 0x" + Integer.toHexString(etherPacket.getEtherType() & 0xffff));
+			System.out.println("checksum = " + checksum + "\tcomputedChecksum = " + computedChecksum);
+			System.out.println("original ttl = " + (int) origTtl + "\tnew ttl = " + (int) header.getTtl());
+			System.out.println("destination IP = " + header.fromIPv4Address(headerDestIP));
+			System.out.println();
+		}
 
-		// Forward packet
+		// Update header (wtf does serialize + deserialize do???) and create new packet
+		header = header.setChecksum((short) 0);
+		serializedData = header.serialize();
+		header = (IPv4) header.deserialize(serializedData, 0, serializedData.length);
 		Ethernet newPacket = (Ethernet) etherPacket.setPayload(header);
+		
+		if (dbg) System.out.print("searching route table...");
+
+		// search for new src/dst MACs and forward new packet
 		RouteEntry re = routeTable.lookup(headerDestIP);
 		if (re != null) {
-			if (dbg) System.out.println("entry found");
-			if (dbg) System.out.print("searching ARP cache...");
+			if (dbg) { 
+				System.out.println("entry found");
+				System.out.print("searching ARP cache...");
+			}
 
 			ArpEntry ae = null;
 			if (re.getGatewayAddress() != 0) {
-				if (dbg) System.out.println("using gateway address");
-
 				// destination IP is in another network and we need to move across routers to reach it
 				ae = arpCache.lookup(re.getGatewayAddress());
+				
+				if (dbg) System.out.println("using gateway address..." + ae.getMac().toString());
 			} else {
-				if (dbg) System.out.println("using destination address");
-
 				// destination IP is on the local network
 				ae = arpCache.lookup(headerDestIP);
+				
+				if (dbg) System.out.println("using destination address..." + ae.getMac().toString());
 			}
 
-			if (dbg) System.out.println("updating MAC addresses...");
+			if (ae == null)	return;
 
 			// updated the Ethernet header with the new source and destination MACs
 			newPacket = newPacket.setSourceMACAddress(re.getInterface().getMacAddress().toBytes());
 			newPacket = newPacket.setDestinationMACAddress(ae.getMac().toBytes());
 
-			if (dbg) System.out.println("sending packet...");
+			if (dbg) {
+				System.out.println();
+				System.out.println("*** -> New outgoing packet: " + newPacket.toString().replace("\n", "\n\t"));
+			}
 
 			// send packet
 			sendPacket(newPacket, re.getInterface());
-		} else {
-			if (dbg) System.out.println("no entry found...dropping packet");
-
-			return;
-		}
-
-		if (dbg) System.out.println("###########################################################");
+		} 
+		
+		return;
 	}
 }
