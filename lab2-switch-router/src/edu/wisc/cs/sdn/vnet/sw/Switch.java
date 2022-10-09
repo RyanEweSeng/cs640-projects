@@ -50,7 +50,7 @@ public class Switch extends Device implements Runnable {
 	/**
 	 * Flag to trigger debug statements (remember to set to false on submission).
 	 */
-	 private boolean dbg = true;
+	 private boolean dbg = false;
 
 	/**
 	 * Iterates through the table and checks the ages of the entries;
@@ -101,9 +101,6 @@ public class Switch extends Device implements Runnable {
 			System.out.println("###########################################################");
 			System.out.println("hostname: " + getHost());
 			System.out.println("*** -> Received packet: " + etherPacket.toString().replace("\n", "\n\t") + "\n");
-		}
-
-		if (dbg) {
 			System.out.println("initial table");
 			printTable();
 		}
@@ -119,7 +116,7 @@ public class Switch extends Device implements Runnable {
 		// we look for the destination MAC in our table
 		Iface outputPort = searchTable(etherPacket);
 
-		if (dbg) {
+		if (dbg1) {
 			System.out.println("searching complete");
 			printTable();
 		}
@@ -132,8 +129,6 @@ public class Switch extends Device implements Runnable {
 			if (dbg) System.out.println("broadcasting...");
 			broadcast(etherPacket, inIface);
 		}
-
-		if (dbg) System.out.println("###########################################################");
 	}
 
 	/**
@@ -190,7 +185,7 @@ public class Switch extends Device implements Runnable {
 		
 		// we reset the age for the source MAC
 		if (table.containsKey(src)) {
-			if (dbg) System.out.print("resetting source (" + src.toString() + ") age...");
+			if (dbg) System.out.print("resetting source MAC (" + src.toString() + ") age...");
 
 			PortInfo info = table.get(src);
 			info.birth = System.currentTimeMillis();
