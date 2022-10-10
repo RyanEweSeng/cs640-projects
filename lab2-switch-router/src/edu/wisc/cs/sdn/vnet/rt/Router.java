@@ -20,7 +20,7 @@ public class Router extends Device {
 	/**
 	 * Flag to trigger debug statements (remember to set to false on submission).
 	 */
-	private boolean dbg = true;
+	private boolean dbg = false;
 	
 	/**
 	 * Creates a router for a specific host.
