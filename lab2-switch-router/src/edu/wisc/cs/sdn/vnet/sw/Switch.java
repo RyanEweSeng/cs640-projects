@@ -50,7 +50,7 @@ public class Switch extends Device implements Runnable {
 	/**
 	 * Flag to trigger debug statements (remember to set to false on submission).
 	 */
-	 private boolean dbg = false;
+	 private boolean dbg = true;
 
 	/**
 	 * Iterates through the table and checks the ages of the entries;
@@ -116,7 +116,7 @@ public class Switch extends Device implements Runnable {
 		// we look for the destination MAC in our table
 		Iface outputPort = searchTable(etherPacket);
 
-		if (dbg1) {
+		if (dbg) {
 			System.out.println("searching complete");
 			printTable();
 		}

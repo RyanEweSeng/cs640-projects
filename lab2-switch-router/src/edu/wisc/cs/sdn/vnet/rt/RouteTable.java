@@ -35,27 +35,22 @@ public class RouteTable  {
 	 */
 	public RouteEntry lookup(int ip) {
 		synchronized(this.entries) {
-			// iterate through the route table
-			int bestAddr = -1;
-			RouteEntry bestEntry = null;
-			for (RouteEntry e : entries) {
-				int mask = e.getMaskAddress();
-				int out = e.getDestinationAddress();
-				
-				// AND the out address with the mask
-				int networkAddr = out & mask;
+			int longestMatchingLength = -1;
+			RouteEntry result = null;
+			for (RouteEntry entry : entries) {
+				int subnetMask = entry.getMaskAddress();
+				int destAddress = entry.getDestinationAddress();
 
-				// AND the target address with the mask
-				int targetNetworkAddr = ip & mask;
-				
-				// if they match and its address has  a longer prefix, we update the best address and entry
-				if (targetNetworkAddr == networkAddr && networkAddr > bestAddr) {
-					bestAddr = networkAddr;
-					bestEntry = e;
+				if ((destAddress & subnetMask) != (ip & subnetMask)) continue;
+
+				int currentMatchingLength = Integer.bitCount(subnetMask);
+				if (currentMatchingLength > longestMatchingLength) {
+					longestMatchingLength = currentMatchingLength;
+					result = entry;
 				}
 			}
-			
-			return bestEntry;
+
+			return result;
     	}
 	}
 	
