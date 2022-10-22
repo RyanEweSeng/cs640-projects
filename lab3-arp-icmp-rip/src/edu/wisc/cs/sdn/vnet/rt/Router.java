@@ -91,12 +91,30 @@ public class Router extends Device {
 	/**
 	 * Handle an Ethernet packet received on a specific interface.
 	 * @param etherPacket the Ethernet packet that was received
-	 * @param inIface the interface on which the packet was received
+	 * @param inIface the port on which the packet was received
 	 */
 	public void handlePacket(Ethernet etherPacket, Iface inIface) {
-		// check if it contains an IPv4 packet
-		if (etherPacket.getEtherType() != Ethernet.TYPE_IPv4) return;
+		// we only handle IPv4 and ARP packets
+		short etherType = etherPacket.getEtherType();
+		switch(etherType) {
+			case Ethernet.TYPE_IPv4:
+				handleIpPacket(etherPacket, inIface);	
+				break;
+			case Ethernet.TYPE_ARP:
+				// TODO: handle arp packets
+				break;
+			default:
+				return;
 
+		}
+	}
+	
+	/**
+	 * Handles the incoming IP packet.
+	 * @param etherPacket the Ethernet packet that was received
+	 * @param inIface the port on which the packet was received
+	 */
+	private void handleIpPacket(Ethernet etherPacket, Iface inIface) {
 		// get the payload
 		IPv4 ipPacket = (IPv4) etherPacket.getPayload();
 
@@ -156,11 +174,9 @@ public class Router extends Device {
 		RouteEntry re = routeTable.lookup(ipPacketDestIP);
 		if (re != null) {
 			ArpEntry ae = null;
-			if (re.getGatewayAddress() != 0) {
-				// destination IP is in another network and we need to move across routers to reach it
+			if (re.getGatewayAddress() != 0) { // destination IP is in another network and we need to move across routers to reach it
 				ae = arpCache.lookup(re.getGatewayAddress());
-			} else {
-				// destination IP is on the local network
+			} else { // destination IP is on the local network
 				ae = arpCache.lookup(ipPacketDestIP);
 			}
 
@@ -183,7 +199,7 @@ public class Router extends Device {
 			sendICMP(ICMPMessageType.DEST_NET_UNREACHABLE, etherPacket, inIface);
 			return;
 		}
-		
+
 		return;
 	}
 
