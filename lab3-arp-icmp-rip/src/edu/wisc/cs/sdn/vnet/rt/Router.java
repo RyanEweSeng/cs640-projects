@@ -8,6 +8,7 @@ import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.IPv4;
 import net.floodlightcontroller.packet.ICMP;
 import net.floodlightcontroller.packet.Data;
+import net.floodlightcontroller.packet.ARP;
 
 /**
  * @author Aaron Gember-Jacobson and Anubhavnidhi Abhashkumar
@@ -101,12 +102,38 @@ public class Router extends Device {
 				handleIpPacket(etherPacket, inIface);	
 				break;
 			case Ethernet.TYPE_ARP:
-				// TODO: handle arp packets
+				handleArpPacket(etherPacket, inIface);
 				break;
 			default:
 				return;
 
 		}
+	}
+
+	/**
+	 * Handles the incoming ARP packet.
+	 * @param etherPacket the Ethernet packet that was received
+	 * @param inIface the port on which the packet was received
+	 */
+	private void handleArpPacket(Ethernet etherPacket, Iface inIface) {
+		// TODO
+		// check opcode field in the ARP header with ARP.OP_REQUEST
+		// if OP_REQUEST, then send an ARP reply
+		// if OP_REPLY, then add entry to the ARP cache
+	}
+
+	/**
+	 * Constructs and sends ARP replies and requests.
+	 */
+	private void sendArpReply() {
+		// TODO
+	}
+
+	/**
+	 * Enqueue incoming packet and generate ARP request on ARP cache miss.
+	 */
+	private void handleArpMiss() {
+		// TODO
 	}
 	
 	/**
