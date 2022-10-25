@@ -125,19 +125,16 @@ public class Router extends Device {
 	 * @param inIface the port on which the packet was received
 	 */
 	private void handleArpPacket(Ethernet etherPacket, Iface inIface) {
-		// TODO
-		// if ARP packet is an ARP request
-		ARP arpPacket = (ARP)etherPacket.getPayload();
+		ARP arpPacket = (ARP) etherPacket.getPayload();
 		int targetIp = ByteBuffer.wrap(arpPacket.getTargetProtocolAddress()).getInt();
-		// packet is a request and has reached destination router
+		
 		if (arpPacket.getOpCode() == ARP.OP_REQUEST && targetIp == inIface.getIpAddress()){
 			sendArpPacket(ARPType.ARP_REPLY, etherPacket, inIface);
+		} else if (arpPacket.getOpCode() == ARP.OP_REPLY && targetIp == inIface.getIpAddress()) {
+			// TODO: handle ARP reply	
 		}
 
-		//only respond to ARP requests whose target IP protocol address equals the IP address of the
-		// interface on which the ARP request was received.
-		// if OP_REQUEST, then send an ARP reply
-		// if OP_REPLY, then add entry to the ARP cache
+		return;
 	}
 
 	/**
@@ -147,20 +144,34 @@ public class Router extends Device {
 		ARP arpPacket = (ARP) etherPacket.getPayload();
 		Ethernet ether = new Ethernet();
 		ARP arp = new ARP();
+		
 		// populate ethernet header fields
 		ether.setEtherType(Ethernet.TYPE_ARP);
 		ether.setSourceMACAddress(inIface.getMacAddress().toBytes());
-		ether.setDestinationMACAddress(etherPacket.getSourceMACAddress());
+		if (type == ARPType.ARP_REPLY) ether.setDestinationMACAddress(etherPacket.getSourceMACAddress());
+		if (type == ARPType.ARP_REQUEST) ether.setDestinationMACAddress(MAC_BROADCAST);
+	
 		// populate ARP header
 		arp.setHardwareType(ARP.HW_TYPE_ETHERNET);
 		arp.setProtocolType(ARP.PROTO_TYPE_IP);
 		arp.setHardwareAddressLength((byte) Ethernet.DATALAYER_ADDRESS_LENGTH);
 		arp.setProtocolAddressLength((byte) 4);
-		arp.setOpCode(ARP.OP_REPLY);
+
+		if (type == ARPType.ARP_REPLY) arp.setOpCode(ARP.OP_REPLY);
+		if (type == ARPType.ARP_REQUEST) arp.setOpCode(ARP.OP_REQUEST);
+
 		arp.setSenderHardwareAddress(inIface.getMacAddress().toBytes());
 		arp.setSenderProtocolAddress(inIface.getIpAddress());
-		arp.setTargetHardwareAddress(arpPacket.getSenderHardwareAddress());
-		arp.setTargetProtocolAddress(arpPacket.getSenderProtocolAddress());
+
+		if (type == ARPType.ARP_REPLY) {
+			arp.setTargetHardwareAddress(arpPacket.getSenderHardwareAddress());
+			arp.setTargetProtocolAddress(arpPacket.getSenderProtocolAddress());
+		}
+
+		if (type == ARPType.ARP_REQUEST) {
+			arp.setTargetHardwareAddress(Ethernet.toMACAddresss(MAC_ZERO));
+			arp.setTargetProtocolAddress(0);
+		}
 
 		ether.setPayload(arp);
 		
