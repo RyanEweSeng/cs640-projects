@@ -10,6 +10,7 @@ import net.floodlightcontroller.packet.ICMP;
 import net.floodlightcontroller.packet.Data;
 import net.floodlightcontroller.packet.ARP;
 
+import java.nio.ByteBuffer;
 /**
  * @author Aaron Gember-Jacobson and Anubhavnidhi Abhashkumar
  */
@@ -33,6 +34,14 @@ public class Router extends Device {
 		DEST_HOST_UNREACHABLE,
 		DEST_PORT_UNREACHABLE,
 		ECHO_REPLY
+	}
+
+	/**
+	 * Enumeration for ARP reply or request
+	 */
+	private enum ARPType {
+		ARP_REPLY,
+		ARP_REQUEST
 	}
 
 	/**
@@ -117,7 +126,16 @@ public class Router extends Device {
 	 */
 	private void handleArpPacket(Ethernet etherPacket, Iface inIface) {
 		// TODO
-		// check opcode field in the ARP header with ARP.OP_REQUEST
+		// if ARP packet is an ARP request
+		ARP arpPacket = (ARP)etherPacket.getPayload();
+		int targetIp = ByteBuffer.wrap(arpPacket.getTargetProtocolAddress()).getInt();
+		// packet is a request and has reached destination router
+		if (arpPacket.getOpCode() == ARP.OP_REQUEST && targetIp == inIface.getIpAddress()){
+			sendArpPacket(ARPType.ARP_REPLY, etherPacket, inIface);
+		}
+
+		//only respond to ARP requests whose target IP protocol address equals the IP address of the
+		// interface on which the ARP request was received.
 		// if OP_REQUEST, then send an ARP reply
 		// if OP_REPLY, then add entry to the ARP cache
 	}
@@ -125,8 +143,28 @@ public class Router extends Device {
 	/**
 	 * Constructs and sends ARP replies and requests.
 	 */
-	private void sendArpReply() {
-		// TODO
+	private void sendArpPacket(ARPType type, Ethernet etherPacket, Iface inIface) {
+		ARP arpPacket = (ARP) etherPacket.getPayload();
+		Ethernet ether = new Ethernet();
+		ARP arp = new ARP();
+		// populate ethernet header fields
+		ether.setEtherType(Ethernet.TYPE_ARP);
+		ether.setSourceMACAddress(inIface.getMacAddress().toBytes());
+		ether.setDestinationMACAddress(etherPacket.getSourceMACAddress());
+		// populate ARP header
+		arp.setHardwareType(ARP.HW_TYPE_ETHERNET);
+		arp.setProtocolType(ARP.PROTO_TYPE_IP);
+		arp.setHardwareAddressLength((byte) Ethernet.DATALAYER_ADDRESS_LENGTH);
+		arp.setProtocolAddressLength((byte) 4);
+		arp.setOpCode(ARP.OP_REPLY);
+		arp.setSenderHardwareAddress(inIface.getMacAddress().toBytes());
+		arp.setSenderProtocolAddress(inIface.getIpAddress());
+		arp.setTargetHardwareAddress(arpPacket.getSenderHardwareAddress());
+		arp.setTargetProtocolAddress(arpPacket.getSenderProtocolAddress());
+
+		ether.setPayload(arp);
+		
+		sendPacket(ether, inIface);
 	}
 
 	/**
