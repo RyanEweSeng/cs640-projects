@@ -138,25 +138,32 @@ public class Router extends Device {
 	 * @param inIface the port on which the packet was received
 	 */
 	private void handleArpPacket(Ethernet etherPacket, Iface inIface) {
+		if (dbg) System.out.println("handleArpPacket called");
 		ARP arpPacket = (ARP) etherPacket.getPayload();
 		int targetIp = ByteBuffer.wrap(arpPacket.getTargetProtocolAddress()).getInt();
 		
-		if (arpPacket.getOpCode() == ARP.OP_REQUEST && targetIp == inIface.getIpAddress()) {
-			sendArpPacket(ARPType.ARP_REPLY, etherPacket, inIface);
-		} else if (arpPacket.getOpCode() == ARP.OP_REPLY && targetIp == inIface.getIpAddress()) {
-			// TODO: handle ARP reply
-			// get the sender MAC and IP address from the arp packet
-			MACAddress mac = new MACAddress(arpPacket.getSenderHardwareAddress());
-			Integer ip = ByteBuffer.wrap(arpPacket.getSenderProtocolAddress()).getInt();
-
-			// add this to the arp cache
-			arpCache.insert(mac, ip);
-
-			// send all the pending packets in the queue to the newly added arp cache entry
-			List<Ethernet> queue = packetQueueMap.remove(ip);
-			for (Ethernet packet : queue) {
-				packet.setDestinationMACAddress(mac.toString());
-				sendPacket(packet, inIface);
+		for (Iface iface : interfaces.values()) {
+			if (targetIp == iface.getIpAddress()) {
+				if (arpPacket.getOpCode() == ARP.OP_REQUEST) {
+					if (dbg) System.out.println("received arp request");
+					sendArpPacket(ARPType.ARP_REPLY, etherPacket, inIface, inIface, 0);
+					break;
+				} else if (arpPacket.getOpCode() == ARP.OP_REPLY) {
+					if (dbg) System.out.println("received arp reply");
+					// get the sender MAC and IP address from the arp packet
+					MACAddress mac = new MACAddress(arpPacket.getSenderHardwareAddress());
+					Integer ip = ByteBuffer.wrap(arpPacket.getSenderProtocolAddress()).getInt();
+		
+					// add this to the arp cache
+					arpCache.insert(mac, ip);
+		
+					// send all the pending packets in the queue to the newly added arp cache entry
+					List<Ethernet> queue = packetQueueMap.remove(ip);
+					for (Ethernet packet : queue) {
+						packet.setDestinationMACAddress(mac.toString());
+						sendPacket(packet, inIface);
+					}
+				}
 			}
 		}
 
@@ -169,8 +176,12 @@ public class Router extends Device {
 	 * @param etherPacket the Ethernet packet that was received
 	 * @param inIface the port on which the packet was received
 	 */
-	private void sendArpPacket(ARPType type, Ethernet etherPacket, Iface inIface) {
-		ARP arpPacket = (ARP) etherPacket.getPayload();
+	private void sendArpPacket(ARPType type, Ethernet etherPacket, Iface inIface, Iface outIface, int ip) {
+		if (dbg) System.out.println("sendArpPacket called, sending an " + type + " request");
+
+		ARP arpPacket = null;
+		if (type == ARPType.ARP_REPLY) arpPacket = (ARP) etherPacket.getPayload();
+		
 		Ethernet ether = new Ethernet();
 		ARP arp = new ARP();
 		
@@ -199,7 +210,7 @@ public class Router extends Device {
 
 		if (type == ARPType.ARP_REQUEST) {
 			arp.setTargetHardwareAddress(Ethernet.toMACAddress("00:00:00:00:00:00"));
-			arp.setTargetProtocolAddress(0);
+			arp.setTargetProtocolAddress(ip);
 		}
 
 		ether.setPayload(arp);
@@ -212,7 +223,7 @@ public class Router extends Device {
 	 * @param etherPacket the Ethernet packet that was received
 	 * @param inIface the port on which the packet was received
 	 */
-	private void handleArpMiss(Ethernet etherPacket, Iface inIface) {
+	private void handleArpMiss(Ethernet etherPacket, Iface inIface, Iface outIface, int ip) {
 		IPv4 ipPacket = (IPv4) etherPacket.getPayload();
 		Integer ipDestAddr = (Integer) ipPacket.getDestinationAddress();
 		RouteEntry re = routeTable.lookup(ipDestAddr);
@@ -223,23 +234,31 @@ public class Router extends Device {
 		Integer ipNextHopAddr = re.getGatewayAddress();
 		if (ipNextHopAddr == 0) ipNextHopAddr = ipDestAddr;
 
+		final int nextIp = ipNextHopAddr;
 		if (packetQueueMap.containsKey(ipNextHopAddr)) { // there is already an existing queue for that next hop ip destination so we just add the incoming packet to that queue
-			packetQueueMap.get(ipNextHopAddr).add(etherPacket);
+			packetQueueMap.get(nextIp).add(etherPacket);
 		} else { // we create a packet queue for that ip
-			packetQueueMap.put(ipNextHopAddr, new ArrayList<Ethernet>());
-			packetQueueMap.get(ipNextHopAddr).add(etherPacket);
+			packetQueueMap.put(nextIp, new ArrayList<Ethernet>());
+			packetQueueMap.get(nextIp).add(etherPacket);
 
 			// we use a timer task (similar functionality to a thread) to send ARP requests to the destination until we get a reply or till 3 requests has been sent
 			// we send a DEST_NET_UNREACHABLE icmp message after sending 3 requests
 			TimerTask task = new TimerTask() {
 				int cnt = 0;
 				public void run() {
-					if (cnt == 3) {
-						sendICMP(ICMPMessageType.DEST_NET_UNREACHABLE, etherPacket, inIface);
+					if (arpCache.lookup(nextIp) != null) {
 						this.cancel();
 					} else {
-						sendArpPacket(ARPType.ARP_REQUEST, etherPacket, inIface);
-						cnt++;
+						if (cnt > 2) {
+							if (dbg) System.out.println("ICMP MESSAGE - DEST HOST UNREACHABLE");
+							packetQueueMap.remove(nextIp);
+							sendICMP(ICMPMessageType.DEST_HOST_UNREACHABLE, etherPacket, inIface);
+							this.cancel();
+						} else {
+							if (dbg) System.out.println("sending #" + cnt + " arp request");
+							sendArpPacket(ARPType.ARP_REQUEST, etherPacket, inIface, outIface, ip);
+							cnt++;
+						}
 					}
 				}
 			};
@@ -312,20 +331,25 @@ public class Router extends Device {
 		// search for new src/dst MACs and forward new packet
 		RouteEntry re = routeTable.lookup(ipPacketDestIP);
 		if (re != null) {
+			Iface outIface = re.getInterface();
+			if (inIface == outIface) return;
+
 			ArpEntry ae = null;
+			int nextIp = -1;
 			if (re.getGatewayAddress() != 0) { // destination IP is in another network and we need to move across routers to reach it
-				ae = arpCache.lookup(re.getGatewayAddress());
+				nextIp = re.getGatewayAddress();
 			} else { // destination IP is on the local network
-				ae = arpCache.lookup(ipPacketDestIP);
+				nextIp = ipPacketDestIP;
 			}
+			ae = arpCache.lookup(nextIp);
 
 			if (ae == null)	{
-				handleArpMiss(etherPacket, inIface);
+				handleArpMiss(etherPacket, inIface, outIface, nextIp);
 				return;
 			}
 
 			// updated the Ethernet header with the new source and destination MACs
-			newPacket = newPacket.setSourceMACAddress(re.getInterface().getMacAddress().toBytes());
+			newPacket = newPacket.setSourceMACAddress(outIface.getMacAddress().toBytes());
 			newPacket = newPacket.setDestinationMACAddress(ae.getMac().toBytes());
 
 			// send packet
