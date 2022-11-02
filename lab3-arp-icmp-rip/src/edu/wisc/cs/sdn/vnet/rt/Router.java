@@ -56,6 +56,15 @@ public class Router extends Device {
 		ARP_REQUEST
 	}
 
+	/*
+	 * Enumeration for RIP packet types
+	 */
+	private enum RIPType {
+		RIP_REQUEST,
+		RIP_RESPONSE,
+		RIP_UNSOL
+	}
+
 	/**
 	 * Flag to trigger debug statements (remember to set to false on submission).
 	 */
@@ -109,6 +118,27 @@ public class Router extends Device {
 		System.out.println("----------------------------------");
 		System.out.print(this.arpCache.toString());
 		System.out.println("----------------------------------");
+	}
+
+	/**
+	 * TODO: initialize the rip
+	 */
+	public void initRip() {
+
+	}
+
+	/**
+	 * TODO: handle rip packet
+	 */
+	private void handleRipPacket(byte type, Ethernet etherPacket, Iface inIface) {
+
+	}
+
+	/**
+	 * TODO: send rip packet
+	 */
+	private void sendRipPacket(RIPType type, Ethernet etherPacket, Iface inIface) {
+
 	}
 
 	/**
@@ -177,6 +207,8 @@ public class Router extends Device {
 	 * @param type the type of ARP packet to construct
 	 * @param etherPacket the Ethernet packet that was received
 	 * @param inIface the port on which the packet was received
+	 * @param outIface the port on which to send the ARP packet
+	 * @param ip the IP address whose associated MAC we desire
 	 */
 	private void sendArpPacket(ARPType type, Ethernet etherPacket, Iface inIface, Iface outIface, int ip) {
 		if (dbg) System.out.println("sendArpPacket called, sending an " + type);
@@ -225,6 +257,8 @@ public class Router extends Device {
 	 * Enqueue incoming packet and generate ARP request on ARP cache miss.
 	 * @param etherPacket the Ethernet packet that was received
 	 * @param inIface the port on which the packet was received
+	 * @param outIface the port on which to send the ARP packet
+	 * @param ip the IP address whose associated MAC we desire
 	 */
 	private void handleArpMiss(final Ethernet etherPacket, final Iface inIface, final Iface outIface, final int ip) {
 		if (dbg) System.out.println("handleArpMiss called");
