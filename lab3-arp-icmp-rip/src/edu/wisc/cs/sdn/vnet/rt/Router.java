@@ -171,6 +171,8 @@ public class Router extends Device {
 			RipEntry entry = new RipEntry(nextHop, cost, creationTime, destAddr, subnetMask);
 			ripMap.put(destNetAddr, entry);
 			routeTable.insert(destNetAddr, 0, subnetMask, iface);
+			
+			if (dbg) System.out.println("initial route table\n" + routeTable.toString() + "----");
 		
 			sendRipPacket(RIPType.RIP_REQUEST, null, iface);	
 		}
@@ -185,13 +187,19 @@ public class Router extends Device {
 
 		TimerTask checkRouteTableTask = new TimerTask() {
 			public void run() {
+				if (dbg) {
+					System.out.println("current route table:\n" + routeTable.toString() + "----");
+					System.out.println("current rip map:");
+					printRipMap();
+					System.out.println("----");
+				}
 				for (RipEntry e : ripMap.values()) {
 					if (e.creationTime != -1) { // we do not want to remove its interfaces
 						long age = System.currentTimeMillis() - e.creationTime;
 						if (age >= 30000) {
 							ripMap.remove(e.destAddr & e.subnetMask);
 							routeTable.remove(e.destAddr, e.subnetMask);
-							if (dbg) System.out.println("removed old entry\n" + routeTable.toString());
+							if (dbg) System.out.println("removed old entry:\n" + routeTable.toString() + "----");
 						}
 					}
 				}
@@ -201,6 +209,21 @@ public class Router extends Device {
 		Timer timer = new Timer(true);
 		timer.schedule(sendUnsolResponseTask, 0, 10000);
 		timer.schedule(checkRouteTableTask, 0, 1000);
+	}
+
+	private void printRipMap() {
+		System.out.println("destNetAddr    nextHop        cost    creationTime        destAddr        subnetMask");
+		for (Map.Entry<Integer, RipEntry> e : ripMap.entrySet()) {
+			RipEntry ripE = e.getValue();
+			System.out.println(
+				IPv4.fromIPv4Address(e.getKey()) + "   | "
+				+ IPv4.fromIPv4Address(ripE.nextHop) + "\t"
+				+ ripE.cost + "\t"
+				+ ripE.creationTime + "\t"
+				+ IPv4.fromIPv4Address(ripE.destAddr) + "\t"
+				+ ripE.subnetMask
+			);
+		}
 	}
 
 	/**
@@ -220,35 +243,37 @@ public class Router extends Device {
 
 				List<RIPv2Entry> entries = ripv2.getEntries();
 				for (RIPv2Entry newEntry : entries) {
-					int newEntryNetAddr = newEntry.getAddress();
+					int newEntryNetAddr = newEntry.getAddress() & newEntry.getSubnetMask();
 
 					if (ripMap.containsKey(newEntryNetAddr)) { // there is an existing route
 						RipEntry localEntry = ripMap.get(newEntryNetAddr);
 
 						if (newEntry.getMetric() + 1 < localEntry.cost) { // better route found
-							updateExistingRoute(newEntry, localEntry, inIface);
+							updateExistingRoute(newEntry, localEntry, ip, inIface);
 						}
 					} else { // this is a new route
 						addNewRoute(newEntry, ip, inIface);
 					}
 				}
-				if (dbg) System.out.println("new route table:\n" + routeTable.toString());
 				break;
 			default:
 				break;
 		}
 	}
 
-	private void updateExistingRoute(RIPv2Entry newEntry, RipEntry localEntry, Iface iface) {
+	private void updateExistingRoute(RIPv2Entry newEntry, RipEntry localEntry, IPv4 ip, Iface iface) {
 		if (dbg) System.out.println("updating existing route");
+
 		localEntry.creationTime = System.currentTimeMillis();
 		localEntry.cost = newEntry.getMetric() + 1;
-		if (localEntry.nextHop != newEntry.getNextHopAddress()) localEntry.nextHop = newEntry.getNextHopAddress();
-		routeTable.update(newEntry.getAddress(), newEntry.getSubnetMask(), newEntry.getNextHopAddress(), iface);
+		localEntry.nextHop = ip.getSourceAddress();
+
+		routeTable.update(newEntry.getAddress(), newEntry.getSubnetMask(), ip.getSourceAddress(), iface);
 	}
 
 	private void addNewRoute(RIPv2Entry newEntry, IPv4 ip, Iface iface) {
 		if (dbg) System.out.println("adding new route");
+
 		int nextHop = ip.getSourceAddress();
 		int cost = newEntry.getMetric() + 1;
 		long creationTime = System.currentTimeMillis();
