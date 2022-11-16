@@ -11,9 +11,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import edu.wisc.cs.sdn.apps.util.Host;
-import eud.wisc.cs.sdn.apss.util.SwitchCommands;
+import edu.wisc.cs.sdn.apss.util.SwitchCommands;
 
 import org.openflow.protocol.OFMatch;
+import org.openflow.protocol.action.OFAction;
+import org.openflow.protocol.action.OFActionOutput;
+import org.openflow.protocol.instruction.OFInstruction;
 import org.openflow.protocol.instruction.OFInstructionApplyActions;
 
 import net.floodlightcontroller.core.IFloodlightProviderService;
@@ -80,11 +83,6 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
 		this.floodlightProv.addOFSwitchListener(this);
 		this.linkDiscProv.addListener(this);
 		this.deviceProv.addListener(this);
-		
-		/*********************************************************************/
-		/* TODO: Initialize variables or perform startup tasks, if necessary */
-		
-		/*********************************************************************/
 	}
 	
     /**
@@ -104,6 +102,150 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
     private Collection<Link> getLinks() { return linkDiscProv.getLinks().keySet(); }
 
     /**
+     * Finds the shortest routes using the Bellman-Ford algorithm.
+     */
+    private Map<Long, Integer> bellmanford(IOFSwitch start) {
+        Map<Long, Integer> dist = new ConcurrentHashMap<>();
+        Map<Long, Integer> prev = new ConcurrentHashMap<>();
+
+        Queue<Long> queue = new LinkedList<>();
+
+        Collection<Link> edges;
+
+        // set start node to 0 and every other node to inf
+        for (IOFSwitch s : this.getSwitches().values()) {
+            dist.put(s.getId(), Integer.MAX_VALUE);
+        }
+        dist.put(start.getId(), 0);
+
+        // begin bellman-ford
+        for (int i = 0; i < this.getSwitches().size(); i++) {
+            edges = this.cleanLinks();
+            queue.add(start.getId()); 
+
+            while (!queue.isEmpty()) {
+                long currID = queue.remove();
+                
+                // find all the edges of the current node
+                Collection<Link> currEdges = new ArrayList<>();
+                for (Link edge : edges) {
+                    if (edge.getSrc() == currID || edge.getDst() == currID) currEdges.add(edge);
+                }
+
+                for (Link edge : currEdges) {
+                    int currDist = dist.get(currID);
+                    long nextNode = -1;
+                    int nextDist = -1;
+                    int nextNodePort = -1;
+
+                    // update procedure for Bellman-Ford
+                    // we do this because of the Link objects that Floodlight uses
+                    if (currID == edge.getSrc()) {
+                        nextNode = edge.getDst();
+                        nextDist = dist.get(nextNode);
+                        nextNodePort = edge.getDstPort();
+                    } else {
+                        nextNode = edge.getSrc();
+                        nextDist = dist.get(nextNode);
+                        nextNodePort = edge.getSrcPort();
+                    }
+
+                    if (currDist + 1 < nextDist) {
+                        dist.put(nextNode, currDist + 1);
+                        prev.put(nextNode, nextNodePort);
+                    }
+
+                    queue.add(nextNode);
+                    edges.remove(edge);
+                }
+            }
+        }
+
+        return prev;
+    }
+
+    /**
+     * This is a helper function to clean up the links as Floodlight uses two Link objects to represent an edge.
+     */
+    private Collection<Link> cleanLinks() {
+        Collection<Link> newLinks = new ArrayList<>();
+        Collection<Link> ogLinks = this.getLinks();
+
+        for (Link ogL : ogLinks) {
+            if (newLinks.isEmpty()) {
+                newLinks.add(ogL);
+                continue;
+            }
+
+            for (Link newL : newLinks) {
+                if (ogL.getSrc() == newL.getSrc() && ogL.getDst() == newL.getDst() ||
+                    ogL.getSrc() == newL.getDst() && ogL.getDst() == newL.getSrc()) {
+                    break;
+                } else {
+                    newLinks.add(ogL);
+                    break;
+                }
+            }
+        }
+
+        return newLinks;
+    }
+
+    /**
+     * Adds a rule to the table.
+     */
+    private void addRule(Host host) {
+        // get the shortest routes to all other nodes from the host
+        Map<Long, Integer> shortestRoutes = this.bellmanford(host.getSwitch());
+
+        // the rule should match IP packets whose dest IP is the host IP
+        // set etherType before dest IP
+        OFMatch match = createMatch(host);
+
+        // add a rule in table for every node in the path
+        // a rule's action is output packets of the appropriate port to reach the next switch in route
+        for (Long id : shortestRoutes.keySet()) {
+            OFAction action = new OFActionOutput(shortestRoutes.get(id));
+            OFInstruction instr = new OFInstructionApplyActions(Arrays.asList(action));
+
+            SwitchCommands.installRule(
+                this.getSwitches().get(id),
+                this.table,
+                SwitchCommands.DEFAULT_PRIORITY,
+                match,
+                Arrays.asList(instr),
+                SwitchCommands.NO_TIMEOUT,
+                SwitchCommands.NO_TIMEOUT
+            );
+        }
+
+        // add the host to the switch table
+        OFAction action = new OFActionOutput(shortestRoutes.get(host.getPort());
+        OFInstruction instr = new OFInstructionApplyActions(Arrays.asList(action));
+
+        SwitchCommands.installRule(
+            host.getSwitch(),
+            this.table,
+            SwitchCommands.DEFAULT_PRIORITY,
+            match,
+            Arrays.asList(instr),
+            SwitchCommands.NO_TIMEOUT,
+            SwitchCommands.NO_TIMEOUT
+        );
+    }
+
+    /**
+     * Helper function to create the OFMatch and sets the ether type and dest IP fields.
+     */
+    private OFMatch createMatch(Host host) {
+        OFMatch m = new OFMatch();
+        m.setDataLayerType(OFMatch.ETH_TYPE_IPV4);
+        m.setNetworkDestination(host.getIPv4Address());
+
+        return m;
+    }
+
+    /**
      * Event handler called when a host joins the network.
      * @param device information about the host
      */
@@ -115,11 +257,9 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
 		if (host.getIPv4Address() != null) {
 			log.info(String.format("Host %s added", host.getName()));
 			this.knownHosts.put(device, host);
-			
-			/*****************************************************************/
-			/* TODO: Update routing: add rules to route to new host          */
-			
-			/*****************************************************************/
+
+            // update routing: add rules to route to new host only if host is attached
+            if (host.isAttachedToSwitch()) { this.addRule(host); }
 		}
 	}
 
@@ -137,10 +277,10 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
 		
 		log.info(String.format("Host %s is no longer attached to a switch", host.getName()));
 		
-		/*********************************************************************/
-		/* TODO: Update routing: remove rules to route to host               */
-		
-		/*********************************************************************/
+		// update routing: remove rules to route to host
+        for (IOFSwitch switch : this.getSwitches().values()) {
+            SwitchCommands.removeRules(switch, this.table, createMatch(host)); 
+        }
 	}
 
 	/**
@@ -162,10 +302,11 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
 
 		log.info(String.format("Host %s moved to s%d:%d", host.getName(), host.getSwitch().getId(), host.getPort()));
 		
-		/*********************************************************************/
-		/* TODO: Update routing: change rules to route to host               */
-		
-		/*********************************************************************/
+		// update routing: change rules to route to host
+        for (IOFSwitch switch : this.getSwitches().values()) {
+            SwitchCommands.removeRules(switch, this.table, createMatch(host));
+        } 
+        if (host.isAttachedToSwitch()) { this.addRule(host); }
 	}
 	
     /**
@@ -177,10 +318,13 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
 		IOFSwitch sw = this.floodlightProv.getSwitch(switchId);
 		log.info(String.format("Switch s%d added", switchId));
 		
-		/*********************************************************************/
-		/* TODO: Update routing: change routing rules for all hosts          */
-		
-		/*********************************************************************/
+		// update routing: change routing rules for all hosts
+        for (Host h : this.getHosts()) {
+            for (IOFSwitch s : this.getSwitches.values()) {
+                SwitchCommands.removeRules(s, this.table, createMatch(h));
+            }
+            if (h.isAttachedToSwitch()) { this.addRule(h); }
+        }
 	}
 
 	/**
@@ -192,10 +336,13 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
 		IOFSwitch sw = this.floodlightProv.getSwitch(switchId);
 		log.info(String.format("Switch s%d removed", switchId));
 		
-		/*********************************************************************/
-		/* TODO: Update routing: change routing rules for all hosts          */
-		
-		/*********************************************************************/
+		// update routing: change routing rules for all hosts
+		for (Host h : this.getHosts()) {
+            for (IOFSwitch s : this.getSwitches.values()) {
+                SwitchCommands.removeRules(s, this.table, createMatch(h));
+            }
+            if (h.isAttachedToSwitch()) { this.addRule(h); }
+        }
 	}
 
 	/**
@@ -219,10 +366,13 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
 			}
 		}
 		
-		/*********************************************************************/
-		/* TODO: Update routing: change routing rules for all hosts          */
-		
-		/*********************************************************************/
+		// update routing: change routing rules for all hosts
+		for (Host h : this.getHosts()) {
+            for (IOFSwitch s : this.getSwitches.values()) {
+                SwitchCommands.removeRules(s, this.table, createMatch(h));
+            }
+            if (h.isAttachedToSwitch()) { this.addRule(h); }
+        }
 	}
 
 	/**
