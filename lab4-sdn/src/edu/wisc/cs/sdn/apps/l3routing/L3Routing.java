@@ -278,9 +278,9 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
 		log.info(String.format("Host %s is no longer attached to a switch", host.getName()));
 		
 		// update routing: remove rules to route to host
-        	for (IOFSwitch switch : this.getSwitches().values()) {
-            		SwitchCommands.removeRules(switch, this.table, createMatch(host)); 
-        	}
+        for (IOFSwitch sw : this.getSwitches().values()) {
+            SwitchCommands.removeRules(sw, this.table, createMatch(host)); 
+        }
 	}
 
 	/**
@@ -303,8 +303,8 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
 		log.info(String.format("Host %s moved to s%d:%d", host.getName(), host.getSwitch().getId(), host.getPort()));
 		
 		// update routing: change rules to route to host
-        for (IOFSwitch switch : this.getSwitches().values()) {
-            SwitchCommands.removeRules(switch, this.table, createMatch(host));
+        for (IOFSwitch sw : this.getSwitches().values()) {
+            SwitchCommands.removeRules(sw, this.table, createMatch(host));
         } 
         if (host.isAttachedToSwitch()) { this.addRule(host); }
 	}
