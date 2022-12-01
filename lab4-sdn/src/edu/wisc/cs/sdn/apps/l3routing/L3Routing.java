@@ -105,10 +105,10 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
      * Finds the shortest routes using the Bellman-Ford algorithm.
      */
     private Map<Long, Integer> bellmanford(IOFSwitch start) {
-        Map<Long, Integer> dist = new ConcurrentHashMap<>();
-        Map<Long, Integer> prev = new ConcurrentHashMap<>();
+        Map<Long, Integer> dist = new ConcurrentHashMap<Long, Integer>();
+        Map<Long, Integer> prev = new ConcurrentHashMap<Long, Integer>();
 
-        Queue<Long> queue = new LinkedList<>();
+        Queue<Long> queue = new LinkedList<Long>();
 
         Collection<Link> edges;
 
@@ -127,7 +127,7 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
                 long currID = queue.remove();
                 
                 // find all the edges of the current node
-                Collection<Link> currEdges = new ArrayList<>();
+                Collection<Link> currEdges = new ArrayList<Link>();
                 for (Link edge : edges) {
                     if (edge.getSrc() == currID || edge.getDst() == currID) currEdges.add(edge);
                 }
@@ -168,7 +168,7 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
      * This is a helper function to clean up the links as Floodlight uses two Link objects to represent an edge.
      */
     private Collection<Link> cleanLinks() {
-        Collection<Link> newLinks = new ArrayList<>();
+        Collection<Link> newLinks = new ArrayList<Link>();
         Collection<Link> ogLinks = this.getLinks();
 
         for (Link ogL : ogLinks) {
@@ -220,7 +220,7 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
         }
 
         // add the host to the switch table
-        OFAction action = new OFActionOutput(shortestRoutes.get(host.getPort());
+        OFAction action = new OFActionOutput(shortestRoutes.get(host.getPort()));
         OFInstruction instr = new OFInstructionApplyActions(Arrays.asList(action));
 
         SwitchCommands.installRule(
@@ -278,9 +278,9 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
 		log.info(String.format("Host %s is no longer attached to a switch", host.getName()));
 		
 		// update routing: remove rules to route to host
-        for (IOFSwitch switch : this.getSwitches().values()) {
-            SwitchCommands.removeRules(switch, this.table, createMatch(host)); 
-        }
+        	for (IOFSwitch switch : this.getSwitches().values()) {
+            		SwitchCommands.removeRules(switch, this.table, createMatch(host)); 
+        	}
 	}
 
 	/**
