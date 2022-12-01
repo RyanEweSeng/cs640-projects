@@ -216,7 +216,7 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
         }
 
         // add the host to the switch table
-        OFAction action = new OFActionOutput(shortestRoutes.get(host.getPort()));
+        OFAction action = new OFActionOutput(host.getPort());
         OFInstruction instr = new OFInstructionApplyActions(Arrays.asList(action));
 
         SwitchCommands.installRule(
