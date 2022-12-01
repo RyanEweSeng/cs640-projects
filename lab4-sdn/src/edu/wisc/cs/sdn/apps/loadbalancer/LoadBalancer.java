@@ -5,15 +5,28 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Arrays;
 
+import org.openflow.protocol.action.OFAction;
+import org.openflow.protocol.action.OFActionOutput;
+import org.openflow.protocol.action.OFActionSetField;
+
+import org.openflow.protocol.instruction.OFInstruction;
+import org.openflow.protocol.instruction.OFInstructionAppyActions;
+import org.openflow.protocol.instruction.OFInstructionGotoTable;
+
+import org.openflow.protocol.OFMatch;
 import org.openflow.protocol.OFMessage;
 import org.openflow.protocol.OFPacketIn;
 import org.openflow.protocol.OFType;
+import org.openflow.protocol.OFPort;
+import org.openflow.protocol.OFOXMFieldType;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import edu.wisc.cs.sdn.apps.util.ArpServer;
+import edu.wisc.cs.sdn.apps.util.SwitchCommands;
 
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.IFloodlightProviderService;
@@ -32,9 +45,7 @@ import net.floodlightcontroller.devicemanager.internal.DeviceManagerImpl;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.util.MACAddress;
 
-public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
-		IOFMessageListener
-{
+public class LoadBalancer implements IFloodlightModule, IOFSwitchListener, IOFMessageListener {
 	public static final String MODULE_NAME = LoadBalancer.class.getSimpleName();
 	
 	private static final byte TCP_FLAG_SYN = 0x02;
@@ -60,9 +71,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
      * Loads dependencies and initializes data structures.
      */
 	@Override
-	public void init(FloodlightModuleContext context)
-			throws FloodlightModuleException 
-	{
+	public void init(FloodlightModuleContext context) throws FloodlightModuleException {
 		log.info(String.format("Initializing %s...", MODULE_NAME));
 		
 		// Obtain table number from config
@@ -91,8 +100,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
         this.deviceProv = context.getServiceImpl(IDeviceService.class);
         
         /*********************************************************************/
-        /* TODO: Initialize other class variables, if necessary              */
-        
+        /* Initialize other class variables, if necessary                    */
         /*********************************************************************/
 	}
 
@@ -100,16 +108,13 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
      * Subscribes to events and performs other startup tasks.
      */
 	@Override
-	public void startUp(FloodlightModuleContext context)
-			throws FloodlightModuleException 
-	{
+	public void startUp(FloodlightModuleContext context) throws FloodlightModuleException {
 		log.info(String.format("Starting %s...", MODULE_NAME));
 		this.floodlightProv.addOFSwitchListener(this);
 		this.floodlightProv.addOFMessageListener(OFType.PACKET_IN, this);
 		
 		/*********************************************************************/
-		/* TODO: Perform other tasks, if necessary                           */
-		
+		/* Perform other tasks, if necessary                                 */
 		/*********************************************************************/
 	}
 	
@@ -118,19 +123,70 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
      * @param DPID for the switch
      */
 	@Override
-	public void switchAdded(long switchId) 
-	{
+	public void switchAdded(long switchId) {
 		IOFSwitch sw = this.floodlightProv.getSwitch(switchId);
 		log.info(String.format("Switch s%d added", switchId));
 		
-		/*********************************************************************/
-		/* TODO: Install rules to send:                                      */
-		/*       (1) packets from new connections to each virtual load       */
-		/*       balancer IP to the controller                               */
-		/*       (2) ARP packets to the controller, and                      */
-		/*       (3) all other packets to the next rule table in the switch  */
+		/*********************************************************************************************/
+		/* Install rules to send:                                                                    */
+		/*       (1) packets from new connections to each virtual load balancer IP to the controller */
+		/*       (2) ARP packets to the controller                                                   */
+		/*       (3) all other packets to the next rule table in the switch                          */
+		/*																							 */
+		/* Rules related to case (3) will have default priority as per writeup 						 */
+		/* Rules related to case (1) and (2) will have a higher priority							 */
+		/* 																							 */
+		/* This makes sense because if its 'hoppable', we want to send it on its way				 */
+		/* Packets that can't be found, means they are new connections and we handle case (1) & (2)  */
+		/*********************************************************************************************/
+
+		// install rules to send all other packets to the next rule table in the switch
+		OFMatch matchAllOther = new OFMatch();
+		OFInstruction instrAllOther = new OFInstructionGotoTable(L3Routing.table);
+		SwitchCommands.installRule(
+			sw,
+			this.table,
+			SwitchCommands.DEFAULT_PRIORITY,
+			matchAllOther,
+			Arrays.asList(instrAllOther)
+		);
 		
-		/*********************************************************************/
+		// we need to install rules for each load balancer instance virtual IP
+		for (Integer virtualIp : this.instances.keySet()) {
+			// create rules to send packets from new connections
+			OFMatch matchNew = new OFMatch();
+			matchNew.setDataLayerType(OFMatch.ETH_TYPE_IPV4);
+			matchNew.setNetworkProtocol(OFMatch.IP_PROTO_TCP);
+			matchNew.setNetworkDestination(virtualIp);
+
+			OFAction actionNew = new OFActionOutput(OFPort.OFPP_CONTROLLER);
+			OFInstruction instrNew = new OFInstructionAppyActions(Arrays.asList(actionNew));
+
+			// create rules to send ARP packets
+			OFMatch matchArp = new OFMatch();
+			matchArp.setDataLayerType(OFMatch.ETH_TYPE_ARP);
+			matchArp.setNetworkDestination(virtualIp);
+
+			OFAction actionArp = new OFActionOutput(OFPort.OFPP_CONTROLLER);
+			OFInstruction instrArp = new OFInstructionAppyActions(Arrays.asList(actionArp));
+
+			// install the rules
+			SwitchCommands.installRule(
+				sw,
+				this.table,
+				(short) (SwitchCommands.DEFAULT_PRIORITY + 1),
+				matchNew,
+				Arrays.asList(instrNew)
+			);
+
+			SwitchCommands.installRule(
+				sw,
+				this.table,
+				(short) (SwitchCommands.DEFAULT_PRIORITY + 1),
+				matchArp,
+				Arrays.asList(instrArp)
+			);
+		}
 	}
 	
 	/**
@@ -141,9 +197,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 	 * @return indication whether another module should also process the packet
 	 */
 	@Override
-	public net.floodlightcontroller.core.IListener.Command receive(
-			IOFSwitch sw, OFMessage msg, FloodlightContext cntx) 
-	{
+	public net.floodlightcontroller.core.IListener.Command receive(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
 		// We're only interested in packet-in messages
 		if (msg.getType() != OFType.PACKET_IN)
 		{ return Command.CONTINUE; }
@@ -154,17 +208,128 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 		ethPkt.deserialize(pktIn.getPacketData(), 0,
 				pktIn.getPacketData().length);
 		
-		/*********************************************************************/
-		/* TODO: Send an ARP reply for ARP requests for virtual IPs; for TCP */
-		/*       SYNs sent to a virtual IP, select a host and install        */
-		/*       connection-specific rules to rewrite IP and MAC addresses;  */
-		/*       ignore all other packets                                    */
-		
-		/*********************************************************************/
+		/*****************************************************************************************************/
+		/* For ARP requests, send an ARP reply for virtual IPs              								 */
+		/* For TCP SYNs, select a host and install connection-specific rules to rewrite IP and MAC addresses */
+		/* Ignore all other packets                                                                          */
+		/*  																								 */
+		/* These rules need to be a higher priority than the previous cases in switchAdded()				 */
+		/*****************************************************************************************************/
+		switch(ethPkt.getEtherType()) { 
+			case Ethernet.TYPE_ARP:
+				ARP arpPacket = (ARP) ethPkt.getPayload();
+				int virtualIp = IPv4.toIPv4Address(arpPacket.getTargetProtocolAddress());
 
+				if (this.instances.containsKey(virtualIp)) {
+					Ethernet ether = generateArpReply(arpPacket, virtualIp);
+					SwitchCommands.sendPacket(sw, (short) pktIn.getInPort(), ether);	
+				}
+
+				break;
+			case Ethernet.TYPE_IPv4:
+				IPv4 ipPacket = (IPv4) ethPkt.getPayload();
+				if (ipPacket.getProtocol() == IPv4.PROTOCOL_TCP) {
+					TCP tcpPacket = (TCP) ipPacket.getPayload();
+					if (tcpPacket.getFlags() == TCP_FLAG_SYN) {
+						int destinationIP = ipPacket.getDestinationAddress();
+						if (this.instances.containsKey(destinationIP)) {
+							LoadBalancerInstance instance = this.instances.get(destinationIP);
+							
+							// create connection-specific rules to rewrite destination IP and MAC from client to virtual IP
+							int nextHopIp = instance.getNextHostIP();
+							OFInstruction defaultInstr = new OFInstructionGotoTable(L3Routing.table); // these are the instructions to get the next hop
+
+							OFMatch matchToVirt = new OFMatch();
+							matchToVirt.setDataLayerType(Ethernet.TYPE_IPv4);
+							matchToVirt.setNetworkProtocol(OFMatch.IP_PROTO_TCP);
+							matchToVirt.setNetworkSource(ipPacket.getSourceAddress());
+							matchToVirt.setNetworkDestination(destinationIP);
+							matchToVirt.setTransportSource(OFMatch.IP_PROTO_TCP, tcpPacket.getSourcePort());
+							matchToVirt.setTransportDestination(OFMatch.IP_PROTO_TCP, tcpPacket.getDestinationPort());
+
+							OFAction ipActionToVirt = new OFActionSetField(OFOXMFieldType.IPV4_DST, nextHopIp);
+							OFAction macActionToVirt = new OFActionSetField(OFOXMFieldType.ETH_DST, this.getHostMACAddress(nextHopIp));
+
+							OFInstruction instrToVirt = new OFInstructionAppyActions(Arrays.asList(ipActionToVirt, macActionToVirt));
+
+							// create connection-specific rules to rewrite source IP and MAC from server to client
+							OFMatch matchToClient = new OFMatch();
+							matchToClient.setDataLayerType(Ethernet.TYPE_IPv4);
+							matchToClient.setNetworkProtocol(OFMatch.IP_PROTO_TCP);
+							matchToClient.setNetworkSource(nextHopIp);
+							matchToClient.setNetworkDestination(ipPacket.getSourceAddress());
+							matchToClient.setTransportSource(OFMatch.IP_PROTO_TCP, tcpPacket.getDestinationPort());
+							matchToClient.setTransportDestination(OFMatch.IP_PROTO_TCP, tcpPacket.getSourcePort());
+
+							OFAction ipActionToClient = new OFActionSetField(OFOXMFieldType.IPV4_SRC, destinationIP);
+							OFAction macActionToClient = new OFActionSetField(OFOXMFieldType.ETH_SRC, instance.getVirtualMAC());
+
+							OFInstruction instrToClient = new OFInstructionAppyActions(Arrays.asList(ipActionToClient, macActionToClient));
+							
+							// install all created rules
+							SwitchCommands.installRule(
+								sw,
+								this.table,
+								(short) (SwitchCommands.DEFAULT_PRIORITY + 2),
+								matchToVirt,
+								Arrays.asList(instrToVirt, defaultInstr),
+								SwitchCommands.NO_TIMEOUT, 
+								IDLE_TIMEOUT
+							);
+
+							SwitchCommands.installRule(
+								sw,
+								this.table,
+								(short) (SwitchCommands.DEFAULT_PRIORITY + 2),
+								matchToClient,
+								Arrays.asList(instrToClient, defaultInstr),
+								SwitchCommands.NO_TIMEOUT, 
+								IDLE_TIMEOUT
+							);
+						}
+					}
+				}
+				break;
+		}
 		
-		// We don't care about other packets
+		// ignore other packets
 		return Command.CONTINUE;
+	}
+
+	/**
+	 * Helper function for receive() to generate ether packet.
+	 * @param arpPacket the incoming ARP packet
+	 * @param virtualIp the virtual IP the packet is being received from
+	 * @return
+	 */
+	private Ethernet generateArpReply(ARP arpPacket, int virtualIp) {
+		Ethernet ether = new Ethernet();
+		ARP arp = new ARP();    
+		byte[] macAddress = this.instances.get(virtualIp).getVirtualMAC();
+
+		// populate ethernet header fields
+		ether.setEtherType(Ethernet.TYPE_ARP);
+		ether.setSourceMACAddress(macAddress);
+		ether.setDestinationMACAddress(arpPacket.getSourceMACAddress());
+
+		// populate ARP header
+		arp.setHardwareType(ARP.HW_TYPE_ETHERNET);
+		arp.setProtocolType(ARP.PROTO_TYPE_IP);
+
+		arp.setHardwareAddressLength((byte) Ethernet.DATALAYER_ADDRESS_LENGTH);
+		arp.setProtocolAddressLength((byte) 4);
+
+		arp.setOpCode(ARP.OP_REPLY); 
+
+		arp.setSenderHardwareAddress(macAddress);
+		arp.setSenderProtocolAddress(virtualIp);
+		arp.setTargetHardwareAddress(arpPacket.getSenderHardwareAddress());
+		arp.setTargetProtocolAddress(arpPacket.getSenderProtocolAddress());
+
+		// set payload
+		ether.setPayload(arp);
+
+		return ether;
 	}
 	
 	/**
@@ -172,8 +337,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 	 * @param hostIPAddress the host's IP address
 	 * @return the hosts's MAC address, null if unknown
 	 */
-	private byte[] getHostMACAddress(int hostIPAddress)
-	{
+	private byte[] getHostMACAddress(int hostIPAddress) {
 		Iterator<? extends IDevice> iterator = this.deviceProv.queryDevices(
 				null, null, hostIPAddress, null, null);
 		if (!iterator.hasNext())
@@ -187,16 +351,14 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 	 * @param DPID for the switch
 	 */
 	@Override
-	public void switchRemoved(long switchId) 
-	{ /* Nothing we need to do, since the switch is no longer active */ }
+	public void switchRemoved(long switchId) { /* Unneeded, since the switch is no longer active */ }
 
 	/**
 	 * Event handler called when the controller becomes the master for a switch.
 	 * @param DPID for the switch
 	 */
 	@Override
-	public void switchActivated(long switchId)
-	{ /* Nothing we need to do, since we're not switching controller roles */ }
+	public void switchActivated(long switchId) { /* Unneeded, since we're not switching controller roles */ }
 
 	/**
 	 * Event handler called when a port on a switch goes up or down, or is
@@ -206,42 +368,34 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 	 * @param type the type of status change (up, down, add, remove)
 	 */
 	@Override
-	public void switchPortChanged(long switchId, ImmutablePort port,
-			PortChangeType type) 
-	{ /* Nothing we need to do, since load balancer rules are port-agnostic */}
+	public void switchPortChanged(long switchId, ImmutablePort port,PortChangeType type) { /* Unneeded, since load balancer rules are port-agnostic */}
 
 	/**
 	 * Event handler called when some attribute of a switch changes.
 	 * @param DPID for the switch
 	 */
 	@Override
-	public void switchChanged(long switchId) 
-	{ /* Nothing we need to do */ }
+	public void switchChanged(long switchId) { /* Unneeded */ }
 	
     /**
      * Tell the module system which services we provide.
      */
 	@Override
-	public Collection<Class<? extends IFloodlightService>> getModuleServices() 
-	{ return null; }
+	public Collection<Class<? extends IFloodlightService>> getModuleServices() { return null; }
 
 	/**
      * Tell the module system which services we implement.
      */
 	@Override
-	public Map<Class<? extends IFloodlightService>, IFloodlightService> 
-			getServiceImpls() 
-	{ return null; }
+	public Map<Class<? extends IFloodlightService>, IFloodlightService> getServiceImpls() { return null; }
 
 	/**
      * Tell the module system which modules we depend on.
      */
 	@Override
-	public Collection<Class<? extends IFloodlightService>> 
-			getModuleDependencies() 
-	{
+	public Collection<Class<? extends IFloodlightService>> getModuleDependencies() {
 		Collection<Class<? extends IFloodlightService >> floodlightService =
-	            new ArrayList<Class<? extends IFloodlightService>>();
+	        new ArrayList<Class<? extends IFloodlightService>>();
         floodlightService.add(IFloodlightProviderService.class);
         floodlightService.add(IDeviceService.class);
         return floodlightService;
@@ -252,16 +406,14 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 	 * @return name for this module
 	 */
 	@Override
-	public String getName() 
-	{ return MODULE_NAME; }
+	public String getName() { return MODULE_NAME; }
 
 	/**
 	 * Check if events must be passed to another module before this module is
 	 * notified of the event.
 	 */
 	@Override
-	public boolean isCallbackOrderingPrereq(OFType type, String name) 
-	{
+	public boolean isCallbackOrderingPrereq(OFType type, String name) {
 		return (OFType.PACKET_IN == type 
 				&& (name.equals(ArpServer.MODULE_NAME) 
 					|| name.equals(DeviceManagerImpl.MODULE_NAME))); 
@@ -272,6 +424,5 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener,
 	 * been notified of the event.
 	 */
 	@Override
-	public boolean isCallbackOrderingPostreq(OFType type, String name) 
-	{ return false; }
+	public boolean isCallbackOrderingPostreq(OFType type, String name) { return false; }
 }
