@@ -12,7 +12,7 @@ import org.openflow.protocol.action.OFActionOutput;
 import org.openflow.protocol.action.OFActionSetField;
 
 import org.openflow.protocol.instruction.OFInstruction;
-import org.openflow.protocol.instruction.OFInstructionAppyActions;
+import org.openflow.protocol.instruction.OFInstructionApplyActions;
 import org.openflow.protocol.instruction.OFInstructionGotoTable;
 
 import org.openflow.protocol.OFMatch;
@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 
 import edu.wisc.cs.sdn.apps.util.ArpServer;
 import edu.wisc.cs.sdn.apps.util.SwitchCommands;
+import edu.wisc.cs.sdn.apps.l3routing.L3Routing;
 
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.IFloodlightProviderService;
@@ -44,6 +45,9 @@ import net.floodlightcontroller.devicemanager.IDeviceService;
 import net.floodlightcontroller.devicemanager.internal.DeviceManagerImpl;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.util.MACAddress;
+import net.floodlightcontroller.packet.TCP;
+import net.floodlightcontroller.packet.IPv4;
+import net.floodlightcontroller.packet.ARP;
 
 public class LoadBalancer implements IFloodlightModule, IOFSwitchListener, IOFMessageListener {
 	public static final String MODULE_NAME = LoadBalancer.class.getSimpleName();
@@ -160,7 +164,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener, IOFMe
 			matchNew.setNetworkDestination(virtualIp);
 
 			OFAction actionNew = new OFActionOutput(OFPort.OFPP_CONTROLLER);
-			OFInstruction instrNew = new OFInstructionAppyActions(Arrays.asList(actionNew));
+			OFInstruction instrNew = new OFInstructionApplyActions(Arrays.asList(actionNew));
 
 			// create rules to send ARP packets
 			OFMatch matchArp = new OFMatch();
@@ -168,7 +172,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener, IOFMe
 			matchArp.setNetworkDestination(virtualIp);
 
 			OFAction actionArp = new OFActionOutput(OFPort.OFPP_CONTROLLER);
-			OFInstruction instrArp = new OFInstructionAppyActions(Arrays.asList(actionArp));
+			OFInstruction instrArp = new OFInstructionApplyActions(Arrays.asList(actionArp));
 
 			// install the rules
 			SwitchCommands.installRule(
@@ -250,7 +254,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener, IOFMe
 							OFAction ipActionToVirt = new OFActionSetField(OFOXMFieldType.IPV4_DST, nextHopIp);
 							OFAction macActionToVirt = new OFActionSetField(OFOXMFieldType.ETH_DST, this.getHostMACAddress(nextHopIp));
 
-							OFInstruction instrToVirt = new OFInstructionAppyActions(Arrays.asList(ipActionToVirt, macActionToVirt));
+							OFInstruction instrToVirt = new OFInstructionApplyActions(Arrays.asList(ipActionToVirt, macActionToVirt));
 
 							// create connection-specific rules to rewrite source IP and MAC from server to client
 							OFMatch matchToClient = new OFMatch();
@@ -264,7 +268,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener, IOFMe
 							OFAction ipActionToClient = new OFActionSetField(OFOXMFieldType.IPV4_SRC, destinationIP);
 							OFAction macActionToClient = new OFActionSetField(OFOXMFieldType.ETH_SRC, instance.getVirtualMAC());
 
-							OFInstruction instrToClient = new OFInstructionAppyActions(Arrays.asList(ipActionToClient, macActionToClient));
+							OFInstruction instrToClient = new OFInstructionApplyActions(Arrays.asList(ipActionToClient, macActionToClient));
 							
 							// install all created rules
 							SwitchCommands.installRule(
