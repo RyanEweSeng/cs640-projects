@@ -316,7 +316,7 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
 		
 		// update routing: change routing rules for all hosts
         for (Host h : this.getHosts()) {
-            for (IOFSwitch s : this.getSwitches.values()) {
+            for (IOFSwitch s : this.getSwitches().values()) {
                 SwitchCommands.removeRules(s, this.table, createMatch(h));
             }
             if (h.isAttachedToSwitch()) { this.addRule(h); }
@@ -334,7 +334,7 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
 		
 		// update routing: change routing rules for all hosts
 		for (Host h : this.getHosts()) {
-            for (IOFSwitch s : this.getSwitches.values()) {
+            for (IOFSwitch s : this.getSwitches().values()) {
                 SwitchCommands.removeRules(s, this.table, createMatch(h));
             }
             if (h.isAttachedToSwitch()) { this.addRule(h); }
@@ -364,7 +364,7 @@ public class L3Routing implements IFloodlightModule, IOFSwitchListener, ILinkDis
 		
 		// update routing: change routing rules for all hosts
 		for (Host h : this.getHosts()) {
-            for (IOFSwitch s : this.getSwitches.values()) {
+            for (IOFSwitch s : this.getSwitches().values()) {
                 SwitchCommands.removeRules(s, this.table, createMatch(h));
             }
             if (h.isAttachedToSwitch()) { this.addRule(h); }

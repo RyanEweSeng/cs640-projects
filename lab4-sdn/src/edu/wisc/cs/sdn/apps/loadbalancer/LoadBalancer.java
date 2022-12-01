@@ -225,7 +225,7 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener, IOFMe
 				int virtualIp = IPv4.toIPv4Address(arpPacket.getTargetProtocolAddress());
 
 				if (this.instances.containsKey(virtualIp)) {
-					Ethernet ether = generateArpReply(arpPacket, virtualIp);
+					Ethernet ether = generateArpReply(ethPkt, arpPacket, virtualIp);
 					SwitchCommands.sendPacket(sw, (short) pktIn.getInPort(), ether);	
 				}
 
@@ -302,11 +302,12 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener, IOFMe
 
 	/**
 	 * Helper function for receive() to generate ether packet.
+	 * @param ethPacket the incoming Ethernet packet
 	 * @param arpPacket the incoming ARP packet
 	 * @param virtualIp the virtual IP the packet is being received from
 	 * @return
 	 */
-	private Ethernet generateArpReply(ARP arpPacket, int virtualIp) {
+	private Ethernet generateArpReply(Ethernet ethPacket, ARP arpPacket, int virtualIp) {
 		Ethernet ether = new Ethernet();
 		ARP arp = new ARP();    
 		byte[] macAddress = this.instances.get(virtualIp).getVirtualMAC();
@@ -314,14 +315,14 @@ public class LoadBalancer implements IFloodlightModule, IOFSwitchListener, IOFMe
 		// populate ethernet header fields
 		ether.setEtherType(Ethernet.TYPE_ARP);
 		ether.setSourceMACAddress(macAddress);
-		ether.setDestinationMACAddress(arpPacket.getSourceMACAddress());
+		ether.setDestinationMACAddress(ethPacket.getSourceMACAddress());
 
 		// populate ARP header
-		arp.setHardwareType(ARP.HW_TYPE_ETHERNET);
-		arp.setProtocolType(ARP.PROTO_TYPE_IP);
+		arp.setHardwareType(arpPacket.getHardwareType());
+		arp.setProtocolType(arpPacket.getProtocolType());
 
-		arp.setHardwareAddressLength((byte) Ethernet.DATALAYER_ADDRESS_LENGTH);
-		arp.setProtocolAddressLength((byte) 4);
+		arp.setHardwareAddressLength(arpPacket.getHardwareAddressLength());
+		arp.setProtocolAddressLength(arpPacket.getProtocolAddressLength());
 
 		arp.setOpCode(ARP.OP_REPLY); 
 
