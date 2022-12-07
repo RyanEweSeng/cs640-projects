@@ -61,6 +61,10 @@ class SWPSender:
         self._recv_thread.start()
 
         # TODO: Add additional state variables
+        self._semaphore = threading.Semaphore(self._SEND_WINDOW_SIZE)
+        self._sequence_num = 0
+        self._buffer = dict()
+        self._timers = dict()
 
 
     def send(self, data):
@@ -68,12 +72,34 @@ class SWPSender:
             self._send(data[i:i+SWPPacket.MAX_DATA_SIZE])
 
     def _send(self, data):
-        # TODO
+        # Wait for a free space in the send window
+        self._semaphore.acquire(blocking=True)
+
+        # Assign the chunk of data a sequence number—the first chunk of data is assigned
+        # sequence number 0, and the sequence number is incremented for each subsequent
+        # chunk of data.
+        seq_num = self._sequence_num
+        self._sequence_num += 1
+
+        # Add the chunk of data to a buffer—in case it needs to be retransmitted.
+        packet = SWPPacket(type=SWPType.DATA, seq_num=seq_num, data=data)
+        self._buffer[seq_num] = packet
+
+        # Send the data in an SWP packet with the appropriate type (D) and sequence
+        # number—use the SWPPacket class to construct such a packet and use the send
+        # method provided by the LLPEndpoint class to transmit the packet across the network.
+        self._llp_endpoint.send(packet.to_bytes())
+        timer = threading.Timer(self._TIMEOUT, self._retransmit(), args=(seq_num))
+        timer.start()
+        self._timers[seq_num] = timer
 
         return
         
     def _retransmit(self, seq_num):
-        # TODO
+        self._llp_endpoint.send(self._buffer[seq_num].to_bytes())
+        timer = threading.Timer(self._TIMEOUT, self._retransmit(), args=(seq_num))
+        timer.start()
+        self._timers[seq_num] = timer
 
         return 
 
@@ -86,9 +112,15 @@ class SWPSender:
             packet = SWPPacket.from_bytes(raw)
             logging.debug("Received: %s" % packet)
 
-            # TODO
-
-        return
+            type = packet.type()
+            if type == SWPType.ACK:
+                # 1. Cancel the retransmission timer for that chunk of data.
+                self._timers.pop(packet.seq_num)
+                # 2. Discard that chunk of data.
+                self._buffer.pop(packet.seq_num)
+                # 3. Signal that there is now a free space in the send window.
+                self._semaphore.release()
+        # return
 
 class SWPReceiver:
     _RECV_WINDOW_SIZE = 5
