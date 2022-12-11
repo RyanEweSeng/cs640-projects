@@ -60,7 +60,7 @@ class SWPSender:
         self._recv_thread = threading.Thread(target=self._recv)
         self._recv_thread.start()
 
-        # TODO: Add additional state variables
+        # Add additional state variables
         self._semaphore = threading.Semaphore(self._SEND_WINDOW_SIZE)
         self._sequence_num = 0
         self._buffer = dict()
@@ -88,18 +88,18 @@ class SWPSender:
         # Send the data in an SWP packet with the appropriate type (D) and sequence
         # number—use the SWPPacket class to construct such a packet and use the send
         # method provided by the LLPEndpoint class to transmit the packet across the network.
+        t = threading.Timer(self._TIMEOUT, self._retransmit(), [seq_num])
+        t.start()
+        self._timers[seq_num] = t
         self._llp_endpoint.send(packet.to_bytes())
-        timer = threading.Timer(self._TIMEOUT, self._retransmit(), args=(seq_num))
-        timer.start()
-        self._timers[seq_num] = timer
 
         return
         
     def _retransmit(self, seq_num):
+        t = threading.Timer(self._TIMEOUT, self._retransmit(), [seq_num])
+        t.start()
+        self._timers[seq_num] = t
         self._llp_endpoint.send(self._buffer[seq_num].to_bytes())
-        timer = threading.Timer(self._TIMEOUT, self._retransmit(), args=(seq_num))
-        timer.start()
-        self._timers[seq_num] = timer
 
         return 
 
@@ -112,14 +112,22 @@ class SWPSender:
             packet = SWPPacket.from_bytes(raw)
             logging.debug("Received: %s" % packet)
 
-            type = packet.type()
-            if type == SWPType.ACK:
-                # 1. Cancel the retransmission timer for that chunk of data.
-                self._timers.pop(packet.seq_num)
-                # 2. Discard that chunk of data.
-                self._buffer.pop(packet.seq_num)
+            if packet.type == SWPType.ACK:
+                ack_seq_num = packet.seq_num
+
+                for seq_num in self._timers.keys():
+                    if seq_num < ack_seq_num:
+                        # 1. Cancel the retransmission timer for that chunk of data.
+                        self._timers.pop(seq_num).cancel()
+
+                for seq_num in self._buffer.keys():
+                    if seq_num < ack_seq_num:
+                        # 2. Discard that chunk of data.
+                        self._buffer.pop(seq_num)
+
                 # 3. Signal that there is now a free space in the send window.
                 self._semaphore.release()
+
         # return
 
 class SWPReceiver:
@@ -136,7 +144,9 @@ class SWPReceiver:
         self._recv_thread = threading.Thread(target=self._recv)
         self._recv_thread.start()
         
-        # TODO: Add additional state variables
+        # Add additional state variables
+        self._last_read = -1 # represents the most recent (highest) sequence number that was ack'ed
+        self._buffer = dict()
 
 
     def recv(self):
@@ -149,6 +159,29 @@ class SWPReceiver:
             packet = SWPPacket.from_bytes(raw)
             logging.debug("Received: %s" % packet)
             
-            # TODO
+            if packet.type != SWPType.DATA:
+                continue
 
-        return
+            packet_seq_num = packet.seq_num
+
+            # Check if packet was already ack and reetransmit an ack
+            if packet_seq_num < self._last_read:
+                re_ack = SWPPacket(type=SWPType.ACK, seq_num=self._last_read)
+                self._llp_endpoint.send(re_ack.to_bytes())
+
+            # Add packet to buffer
+            self._buffer[packet_seq_num] = packet
+
+            # Traverse buffer until gap, all packets will get sent to queue
+            for seq_num in range(self._last_read + 1, self._last_read + 1 + len(self._buffer)):
+                if seq_num in self._buffer:
+                    self._last_read = seq_num
+                    curr_packet = self._buffer.pop(seq_num)
+                    self._ready_data.put(curr_packet)
+
+            # Send ack for last read
+            if packet_seq_num == self._last_read:
+                ack = SWPPacket(type=SWPType.ACK, seq_num=self._last_read)
+                self._llp_endpoint.send(ack.to_bytes())
+
+        # return
