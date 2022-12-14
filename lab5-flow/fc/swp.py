@@ -118,7 +118,7 @@ class SWPSender:
             ack_seq_num = packet.seq_num
 
             for seq_num in self._timers.keys():
-                if seq_num < ack_seq_num:
+                if seq_num <= ack_seq_num:
                     # 1. Cancel the retransmission timer for that chunk of data.
                     self._timers.pop(seq_num).cancel()
          
