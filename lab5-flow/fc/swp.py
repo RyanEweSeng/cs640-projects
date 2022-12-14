@@ -117,10 +117,13 @@ class SWPSender:
                 
             ack_seq_num = packet.seq_num
 
+            # 1. Cancel the retransmission timer for that chunk of data.
+            timers_to_cancel = list()
             for seq_num in self._timers.keys():
                 if seq_num <= ack_seq_num:
-                    # 1. Cancel the retransmission timer for that chunk of data.
-                    self._timers.pop(seq_num).cancel()
+                    timers_to_cancel.append(seq_num)
+            for seq_num in timers_to_cancel:
+                self.timers.pop(seq_num).cancel()
          
             if ack_seq_num in self._buffer:
                 # 2. Discard that chunk of data.
