@@ -123,7 +123,7 @@ class SWPSender:
                 if seq_num <= ack_seq_num:
                     timers_to_cancel.append(seq_num)
             for seq_num in timers_to_cancel:
-                self.timers.pop(seq_num).cancel()
+                self._timers.pop(seq_num).cancel()
          
             if ack_seq_num in self._buffer:
                 # 2. Discard that chunk of data.
