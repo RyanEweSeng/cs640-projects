@@ -57,7 +57,7 @@ public class DNSServer {
 
 					if (inPacket.isRecursionDesired()) {
 						DNSQuestion q = inPacket.getQuestions().get(0);
-						finalPacket = recursiveResolve(inPacket, rootServer, q);
+						finalPacket = recursiveResolve(rootServer, q);
 						finalPacket.setQuery(false);
 					} else {
 						finalPacket = resolve(rootServer, inPacket);

@@ -88,7 +88,7 @@ class SWPSender:
         # Send the data in an SWP packet with the appropriate type (D) and sequence
         # number—use the SWPPacket class to construct such a packet and use the send
         # method provided by the LLPEndpoint class to transmit the packet across the network.
-        t = threading.Timer(self._TIMEOUT, self._retransmit(), [seq_num])
+        t = threading.Timer(self._TIMEOUT, self._retransmit, [seq_num])
         t.start()
         self._timers[seq_num] = t
         self._llp_endpoint.send(packet.to_bytes())
@@ -96,7 +96,7 @@ class SWPSender:
         return
         
     def _retransmit(self, seq_num):
-        t = threading.Timer(self._TIMEOUT, self._retransmit(), [seq_num])
+        t = threading.Timer(self._TIMEOUT, self._retransmit, [seq_num])
         t.start()
         self._timers[seq_num] = t
         self._llp_endpoint.send(self._buffer[seq_num].to_bytes())
@@ -112,21 +112,22 @@ class SWPSender:
             packet = SWPPacket.from_bytes(raw)
             logging.debug("Received: %s" % packet)
 
-            if packet.type == SWPType.ACK:
-                ack_seq_num = packet.seq_num
+            if packet.type != SWPType.ACK:
+                continue
+                
+            ack_seq_num = packet.seq_num
 
-                for seq_num in self._timers.keys():
-                    if seq_num < ack_seq_num:
-                        # 1. Cancel the retransmission timer for that chunk of data.
-                        self._timers.pop(seq_num).cancel()
+            for seq_num in self._timers.keys():
+                if seq_num < ack_seq_num:
+                    # 1. Cancel the retransmission timer for that chunk of data.
+                    self._timers.pop(seq_num).cancel()
+         
+            if ack_seq_num in self._buffer:
+                # 2. Discard that chunk of data.
+                self._buffer.pop(seq_num)
 
-                for seq_num in self._buffer.keys():
-                    if seq_num < ack_seq_num:
-                        # 2. Discard that chunk of data.
-                        self._buffer.pop(seq_num)
-
-                # 3. Signal that there is now a free space in the send window.
-                self._semaphore.release()
+            # 3. Signal that there is now a free space in the send window.
+            self._semaphore.release()
 
         # return
 
@@ -177,7 +178,7 @@ class SWPReceiver:
                 if seq_num in self._buffer:
                     self._last_read = seq_num
                     curr_packet = self._buffer.pop(seq_num)
-                    self._ready_data.put(curr_packet)
+                    self._ready_data.put(curr_packet.data)
 
             # Send ack for last read
             if packet_seq_num == self._last_read:
