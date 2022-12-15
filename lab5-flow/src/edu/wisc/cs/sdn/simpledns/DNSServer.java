@@ -104,7 +104,9 @@ public class DNSServer {
 		resolvedDnsPacket.setAnswers(newAnswers);
 
 		byte[] buffer = resolvedDnsPacket.serialize();
-		DatagramPacket resolvedDatagramPacket = new DatagramPacket(buffer, buffer.length); 
+		DatagramPacket resolvedDatagramPacket = new DatagramPacket(buffer, buffer.length);
+		if (dnsSocket == null) System.out.println("socket is null");
+		if (resolvedDatagramPacket == null) System.out.println("packet is null");
 		this.dnsSocket.send(resolvedDatagramPacket);
 
         return;
@@ -181,7 +183,7 @@ public class DNSServer {
             buffer = ans.serialize();
             ansPkt = new DatagramPacket(buffer, buffer.length);
 		}
-		
+
 		return ansPkt;
 	}
 
