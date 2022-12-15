@@ -103,8 +103,13 @@ public class DNSServer {
 		}
 		resolvedDnsPacket.setAnswers(newAnswers);
 
+		// convert it back to a datagram packet
 		byte[] buffer = resolvedDnsPacket.serialize();
 		DatagramPacket resolvedDatagramPacket = new DatagramPacket(buffer, buffer.length);
+
+		// set send port and address (client)
+		resolvedDatagramPacket.setPort(datagramPacket.getPort());
+		resolvedDatagramPacket.setAddress(InetAddress.getByName("localhost"));
 		this.dnsSocket.send(resolvedDatagramPacket);
 
         return;
