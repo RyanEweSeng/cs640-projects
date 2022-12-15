@@ -4,7 +4,9 @@ import edu.wisc.cs.sdn.simpledns.packet.DNS;
 import edu.wisc.cs.sdn.simpledns.packet.DNSQuestion;
 import edu.wisc.cs.sdn.simpledns.packet.DNSResourceRecord;
 import edu.wisc.cs.sdn.simpledns.packet.DNSRdata;
+import edu.wisc.cs.sdn.simpledns.packet.DNSRdataName;
 import edu.wisc.cs.sdn.simpledns.packet.DNSRdataString;
+import edu.wisc.cs.sdn.simpledns.packet.DNSRdataAddress;
 
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -97,6 +99,8 @@ public class DNSServer {
 		for (DNSResourceRecord ans : resolvedDnsPacket.getAnswers()) {
 			newAnswers.add(ans);
 
+			// TODO: clean up any duplicate answers
+
 			// for answers of type A, we check if the address(es) are associated with an EC2 region and add TXT record(s) to newAnswers
 			// TXT record is in the format: www.code.org TXT Virginia-50.17.209.250
 			if (ans.getType() == DNS.TYPE_A) checkEC2(ans, newAnswers);
@@ -126,68 +130,63 @@ public class DNSServer {
 		return replyPacket;
 	}
 
-	private DatagramPacket recursiveResolve(InetAddress server, DatagramPacket packet, DNSQuestion question) throws IOException {
-		DatagramPacket ansPkt = resolve(server, packet);
-		DNS ans = DNS.deserialize(ansPkt.getData(), ansPkt.getLength());
-		String name = "";
-		InetAddress nextDst;
-		List<DNSResourceRecord> cnameAnswers = new ArrayList<DNSResourceRecord>();	
-		byte[] buffer = null;	
-		while (ans.getAnswers().size() == 0 || ans.getAnswers().get(0).getType() == DNS.TYPE_CNAME) {
-			//System.out.println(ans+"@@@@@@@@@\n");
-			if (ans.getAdditional().size() > 0) {
-				for (DNSResourceRecord rec : ans.getAdditional()) {
-					if (rec.getType() != DNS.TYPE_AAAA && rec.getName().length() > 0) {
-						name = rec.getData().toString();
-						break;
+	private DatagramPacket recursiveResolve(InetAddress server, DatagramPacket initPacket, DNSQuestion question) throws IOException {
+		DatagramPacket resolvedDatagramPacket = null;
+
+		// query the DNS server
+		DatagramPacket responseDatagramPacket = resolve(server, initPacket);
+		DNS responseDnsPacket = DNS.deserialize(responseDatagramPacket.getData(), responseDatagramPacket.getLength());
+
+		// if there are answers in the response, we add them while recursing on the CNAME records
+		List<DNSResourceRecord> finalAnswers = new ArrayList<>();
+		if (responseDnsPacket.getAnswers().size() > 0) {
+			for (DNSResourceRecord ans : responseDnsPacket.getAnswers()) {
+				finalAnswers.add(ans);
+
+				if (ans.getType() == DNS.TYPE_CNAME) {
+					// query wants IPv4/v6 so we need to resolve the CNAME (we still add CNAME to the answer set)
+					if (question.getType() == DNS.TYPE_A || question.getType() == DNS.TYPE_AAAA) {
+						DNSQuestion cnameQuestion = new DNSQuestion(((DNSRdataName) ans.getData()).getName(), question.getType());
+						DatagramPacket resolvedCnameDatagramPacket = recursiveResolve(rootServer, initPacket, cnameQuestion);
+						DNS resolvedCnameDnsPacket = DNS.deserialize(resolvedCnameDatagramPacket.getData(), resolvedCnameDatagramPacket.getLength());
+
+						// update our final answers, authorities, and additionals
+						finalAnswers.addAll(resolvedCnameDnsPacket.getAnswers());
+						responseDnsPacket.setAuthorities(resolvedCnameDnsPacket.getAuthorities());
+						responseDnsPacket.setAdditional(resolvedCnameDnsPacket.getAdditional());
 					}
 				}
-			} else if (ans.getAuthorities().size() > 0) {
-				name = ans.getAuthorities().get(0).getData().toString();
-			} else if (ans.getAnswers().size() == 0) {
-				break;
 			}
 
-			if (ans.getAdditional().size() == 1 && ans.getAdditional().get(0).getName().length() == 0 && ans.getAuthorities().size() == 0 && ans.getAnswers().size() == 0) break;
+			// set final answers
+			responseDnsPacket.setAnswers(finalAnswers);
+
+			// convert to a datagram packet
+			byte[] buffer = responseDnsPacket.serialize();
+			resolvedDatagramPacket = new DatagramPacket(buffer, buffer.length);
 			
-			try {
-                nextDst = InetAddress.getByName(name);
-			} catch (Exception e) {
-                System.err.println(e);
-                return null;
-            }
+			return resolvedDatagramPacket;
+		}
 
-			if (ans.getAnswers().size() > 0 && ans.getAnswers().get(0).getType() == DNS.TYPE_CNAME) {
-				for (DNSResourceRecord cnameAns : ans.getAnswers()) {
-					cnameAnswers.add(cnameAns);
+		// no answers mean we have to recurse on the authorities and additionals
+		for (DNSResourceRecord auth : responseDnsPacket.getAuthorities()) {
+			if (auth.getType() != DNS.TYPE_NS) continue; // we want a name server that we can hit
+
+			String authName = ((DNSRdataName) auth.getData()).getName();
+			if (responseDnsPacket.getAdditional().size() == 0) {
+				InetAddress nextServer = InetAddress.getByName(authName);
+				return recursiveResolve(nextServer, initPacket, question);
+			} else {
+				for (DNSResourceRecord add : responseDnsPacket.getAdditional()) {
+					if (authName.equals(add.getName()) && add.getType() == DNS.TYPE_A) {
+						InetAddress nextServer = ((DNSRdataAddress) add.getData()).getAddress();
+						resolvedDatagramPacket = recursiveResolve(nextServer, initPacket, question);
+					}
 				}
-				String newQ = ans.getAnswers().get(0).getData().toString();
-				DNS dnsPkt = DNS.deserialize(packet.getData(), packet.getLength());
-				DNSQuestion newQuestion = new DNSQuestion(newQ, question.getType());
-				List<DNSQuestion> DNSQuestions = new ArrayList<DNSQuestion>();
-				DNSQuestions.add(newQuestion);
-				dnsPkt.setQuestions(DNSQuestions);
-				buffer = dnsPkt.serialize();
-				packet = new DatagramPacket(buffer, buffer.length);
 			}
-
-			ansPkt = resolve(nextDst, packet);
-			ans = DNS.deserialize(ansPkt.getData(), ansPkt.getLength());
 		}
 
-		if (cnameAnswers.size() > 0) {
-			ans = DNS.deserialize(ansPkt.getData(), ansPkt.getLength());
-            List<DNSResourceRecord> DNSAnswers = ans.getAnswers();
-            for (DNSResourceRecord cnameAns : cnameAnswers) {
-				DNSAnswers.add(cnameAns);
-			}
-
-			ans.setAnswers(DNSAnswers);
-            buffer = ans.serialize();
-            ansPkt = new DatagramPacket(buffer, buffer.length);
-		}
-
-		return ansPkt;
+		return resolvedDatagramPacket;
 	}
 
 	private void checkEC2(DNSResourceRecord ansRecord, List<DNSResourceRecord> newAnswers) throws UnknownHostException {
