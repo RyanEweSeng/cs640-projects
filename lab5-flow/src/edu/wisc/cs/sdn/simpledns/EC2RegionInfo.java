@@ -1,15 +1,27 @@
 package edu.wisc.cs.sdn.simpledns;
 
-class Subnet {
+class EC2RegionInfo {
     private String location;
     private long ip;
     private long mask;
 
-    Subnet(String entry) {
+    EC2RegionInfo(String entry) {
         String[] tokens = entry.split("[,/]");
         this.location = tokens[3];
         this.ip = parseIp(tokens[0]);
         this.mask = parsePrefix(Integer.parseInt(tokens[1]));
+    }
+
+    public long getIp() {
+        return this.ip;
+    }
+
+    public long getMask() {
+        return this.mask;
+    }
+
+    public String getLoc() {
+        return this.location;
     }
 
     private static long parseIp(String ipString) {
