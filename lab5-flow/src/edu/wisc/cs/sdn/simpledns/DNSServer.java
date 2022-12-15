@@ -59,7 +59,7 @@ public class DNSServer {
 					DatagramPacket resolvedPacket = null;
 
 					if (dnsPacket.isRecursionDesired()) {
-						// TODO
+						resolvedPacket = recursiveResolve(rootServer, inPacket, question);
 					} else {
 						resolvedPacket = resolve(rootServer, inPacket);
 					}
@@ -121,8 +121,68 @@ public class DNSServer {
 		return replyPacket;
 	}
 
-	private DNS recursiveResolve(InetAddress server, DNSQuestion question) throws IOException {
-		return null; // TODO
+	private DatagramPacket recursiveResolve(InetAddress server, DatagramPacket packet, DNSQuestion question) throws IOException {
+		DatagramPacket ansPkt = resolve(server, packet);
+		DNS ans = DNS.deserialize(ansPkt.getData(), ansPkt.getLength());
+		String name = "";
+		InetAddress nextDst;
+		List<DNSResourceRecord> cnameAnswers = new ArrayList<DNSResourceRecord>();	
+		byte[] buffer = null;	
+		while (ans.getAnswers().size() == 0 || ans.getAnswers().get(0).getType() == DNS.TYPE_CNAME) {
+			//System.out.println(ans+"@@@@@@@@@\n");
+			if (ans.getAdditional().size() > 0) {
+				for (DNSResourceRecord rec : ans.getAdditional()) {
+					if (rec.getType() != DNS.TYPE_AAAA && rec.getName().length() > 0) {
+						name = rec.getData().toString();
+						break;
+					}
+				}
+			} else if (ans.getAuthorities().size() > 0) {
+				name = ans.getAuthorities().get(0).getData().toString();
+			} else if (ans.getAnswers().size() == 0) {
+				break;
+			}
+
+			if (ans.getAdditional().size() == 1 && ans.getAdditional().get(0).getName().length() == 0 && ans.getAuthorities().size() == 0 && ans.getAnswers().size() == 0) break;
+			
+			try {
+                nextDst = InetAddress.getByName(name);
+			} catch (Exception e) {
+                System.err.println(e);
+                return null;
+            }
+
+			if (ans.getAnswers().size() > 0 && ans.getAnswers().get(0).getType() == DNS.TYPE_CNAME) {
+				for (DNSResourceRecord cnameAns : ans.getAnswers()) {
+					cnameAnswers.add(cnameAns);
+				}
+				String newQ = ans.getAnswers().get(0).getData().toString();
+				DNS dnsPkt = DNS.deserialize(packet.getData(), packet.getLength());
+				DNSQuestion newQuestion = new DNSQuestion(newQ, question.getType());
+				List<DNSQuestion> DNSQuestions = new ArrayList<DNSQuestion>();
+				DNSQuestions.add(newQuestion);
+				dnsPkt.setQuestions(DNSQuestions);
+				buffer = dnsPkt.serialize();
+				packet = new DatagramPacket(buffer, buffer.length);
+			}
+
+			ansPkt = resolve(nextDst, packet);
+			ans = DNS.deserialize(ansPkt.getData(), ansPkt.getLength());
+		}
+
+		if (cnameAnswers.size() > 0) {
+			ans = DNS.deserialize(ansPkt.getData(), ansPkt.getLength());
+            List<DNSResourceRecord> DNSAnswers = ans.getAnswers();
+            for (DNSResourceRecord cnameAns : cnameAnswers) {
+				DNSAnswers.add(cnameAns);
+			}
+
+			ans.setAnswers(DNSAnswers);
+            buffer = ans.serialize();
+            ansPkt = new DatagramPacket(buffer, buffer.length);
+		}
+		
+		return ansPkt;
 	}
 
 	private void checkEC2(DNSResourceRecord ansRecord, List<DNSResourceRecord> newAnswers) throws UnknownHostException {
