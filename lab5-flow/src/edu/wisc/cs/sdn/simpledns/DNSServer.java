@@ -105,8 +105,6 @@ public class DNSServer {
 
 		byte[] buffer = resolvedDnsPacket.serialize();
 		DatagramPacket resolvedDatagramPacket = new DatagramPacket(buffer, buffer.length);
-		if (dnsSocket == null) System.out.println("socket is null");
-		if (resolvedDatagramPacket == null) System.out.println("packet is null");
 		this.dnsSocket.send(resolvedDatagramPacket);
 
         return;
