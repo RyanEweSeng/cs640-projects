@@ -64,7 +64,7 @@ public class DNSServer {
 						resolvedPacket = resolve(rootServer, inPacket);
 					}
 
-					processAndSendDatagramPacket(question, resolvedPacket);
+					processAndSendDatagramPacket(question, inPacket, resolvedPacket);
 					break;
 				default:
 					continue;
@@ -82,7 +82,7 @@ public class DNSServer {
 		return inPacket;
 	}
 
-	private void processAndSendDatagramPacket(DNSQuestion initialQuestion, DatagramPacket datagramPacket) throws IOException, UnknownHostException {
+	private void processAndSendDatagramPacket(DNSQuestion initialQuestion, DatagramPacket initialPacket, DatagramPacket datagramPacket) throws IOException, UnknownHostException {
 		// convert resolved packet into a DNS packet to extract the answers to our query/question
 		DNS resolvedDnsPacket = DNS.deserialize(datagramPacket.getData(), datagramPacket.getLength());
 
@@ -108,7 +108,7 @@ public class DNSServer {
 		DatagramPacket resolvedDatagramPacket = new DatagramPacket(buffer, buffer.length);
 
 		// set send port and address (client)
-		resolvedDatagramPacket.setPort(datagramPacket.getPort());
+		resolvedDatagramPacket.setPort(initialPacket.getPort());
 		resolvedDatagramPacket.setAddress(InetAddress.getByName("localhost"));
 		this.dnsSocket.send(resolvedDatagramPacket);
 
