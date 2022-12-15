@@ -3,6 +3,8 @@ package edu.wisc.cs.sdn.simpledns;
 import edu.wisc.cs.sdn.simpledns.packet.DNS;
 import edu.wisc.cs.sdn.simpledns.packet.DNSQuestion;
 import edu.wisc.cs.sdn.simpledns.packet.DNSResourceRecord;
+import edu.wisc.cs.sdn.simpledns.packet.DNSRdata;
+import edu.wisc.cs.sdn.simpledns.packet.DNSRdataString;
 
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -10,7 +12,7 @@ import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
-
+import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -80,7 +82,7 @@ public class DNSServer {
 		return inPacket;
 	}
 
-	private void processAndSendDatagramPacket(DNSQuestion initialQuestion, DatagramPacket datagramPacket) throws IOException {
+	private void processAndSendDatagramPacket(DNSQuestion initialQuestion, DatagramPacket datagramPacket) throws IOException, UnknownHostException {
 		// convert resolved packet into a DNS packet to extract the answers to our query/question
 		DNS resolvedDnsPacket = DNS.deserialize(datagramPacket.getData(), datagramPacket.getLength());
 
@@ -97,7 +99,7 @@ public class DNSServer {
 
 			// for answers of type A, we check if the address(es) are associated with an EC2 region and add TXT record(s) to newAnswers
 			// TXT record is in the format: www.code.org TXT Virginia-50.17.209.250
-			if (ans.getType() == DNS.TYPE_A) checkEC2(newAnswers);
+			if (ans.getType() == DNS.TYPE_A) checkEC2(ans, newAnswers);
 		}
 		resolvedDnsPacket.setAnswers(newAnswers);
 
@@ -123,10 +125,28 @@ public class DNSServer {
 		return null; // TODO
 	}
 
-	private void checkEC2(List<DNSResourceRecord> answers) {
-		for (EC2RegionInfo info : this.ec2Regions) {
+	private void checkEC2(DNSResourceRecord ansRecord, List<DNSResourceRecord> newAnswers) throws UnknownHostException {
+		for (EC2RegionInfo info : ec2Regions) {
+			long ip = info.getIp();
+			long mask = info.getMask();
+			String location = info.getLoc();
 
+			// convert ansIp from String to long
+			InetAddress ansAddress = InetAddress.getByName(ansRecord.getData().toString());
+			long ansIp = ByteBuffer.wrap(ansAddress.getAddress()).getInt();
+
+			// check if subnet IPs are the same
+			if ((ip & mask) == (ansIp & mask)) {
+				// create rdata as a formatted string
+				DNSRdata rdataString = new DNSRdataString(String.format("%s-%s", location, ansRecord.getData().toString()));
+				DNSResourceRecord newAns = new DNSResourceRecord(ansRecord.getName(), DNS.TYPE_TXT, rdataString);
+
+				newAnswers.add(newAns);
+				break;
+			}
 		}
+
+		return;
 	}
 
 	// reference: https://stackoverflow.com/questions/18033750/read-one-line-of-a-csv-file-in-java
