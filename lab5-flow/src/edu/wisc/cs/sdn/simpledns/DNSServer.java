@@ -154,7 +154,7 @@ public class DNSServer {
 					if (auth.getType() != DNS.TYPE_NS) continue;
 
 					String authDataName = ((DNSRdataName) auth.getData()).getName();
-					DatagramPacket nextQuery = new DatagramPacket(packet.getData(), packet.getLength());
+					DatagramPacket nextQuery = new DatagramPacket(packet.getData(), packet.getLength(), server, SEND_PORT);
 					if (resolvedDnsPacket.getAdditional().size() == 0) { // no additionals means we ask the name server
 						nextQuery.setAddress(InetAddress.getByName(authDataName));
 						this.dnsSocket.send(nextQuery);
@@ -162,9 +162,9 @@ public class DNSServer {
 						resolvedDnsPacket = DNS.deserialize(responseDatagramPacket.getData(), responseDatagramPacket.getLength());
 					} else { // additionals means we have to ask the IP associated with that additional
 						for (DNSResourceRecord add : resolvedDnsPacket.getAdditional()) {
-							InetAddress addDataAddress = ((DNSRdataAddress) add.getData()).getAddress();
+							DNSRdataAddress addData = (DNSRdataAddress) add.getData();
 							if (authDataName.contentEquals(add.getName()) && add.getType() == DNS.TYPE_A) {
-								nextQuery.setAddress(addDataAddress);
+								nextQuery.setAddress(addData.getAddress());
 								this.dnsSocket.send(nextQuery);
 								this.dnsSocket.receive(responseDatagramPacket);
 								resolvedDnsPacket = DNS.deserialize(responseDatagramPacket.getData(), responseDatagramPacket.getLength());
