@@ -162,9 +162,9 @@ public class DNSServer {
 						resolvedDnsPacket = DNS.deserialize(responseDatagramPacket.getData(), responseDatagramPacket.getLength());
 					} else { // additionals means we have to ask the IP associated with that additional
 						for (DNSResourceRecord add : resolvedDnsPacket.getAdditional()) {
-							DNSRdataAddress addData = (DNSRdataAddress) add.getData();
 							if (authDataName.contentEquals(add.getName()) && add.getType() == DNS.TYPE_A) {
-								nextQuery.setAddress(addData.getAddress());
+								InetAddress addDataAddress = ((DNSRdataAddress) add.getData()).getAddress();
+								nextQuery.setAddress(addDataAddress);
 								this.dnsSocket.send(nextQuery);
 								this.dnsSocket.receive(responseDatagramPacket);
 								resolvedDnsPacket = DNS.deserialize(responseDatagramPacket.getData(), responseDatagramPacket.getLength());
@@ -177,9 +177,9 @@ public class DNSServer {
 				for (DNSResourceRecord ans : resolvedDnsPacket.getAnswers()) {
 					finalAnswers.add(ans);
 
-					String dataName = ((DNSRdataName) ans.getData()).getName();
-
 					if (ans.getType() == DNS.TYPE_CNAME) {
+						String dataName = ((DNSRdataName) ans.getData()).getName();
+						
 						boolean match = false; // check if CNAME record data name is one of the answers
 						for (DNSResourceRecord ans2 : resolvedDnsPacket.getAnswers()) { 
 							String name = ans2.getName();
