@@ -14,13 +14,11 @@ import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+
 import java.nio.ByteBuffer;
+
 import java.util.List;
-
-import javax.xml.crypto.Data;
-
 import java.util.ArrayList;
-import java.util.Collections;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
@@ -179,7 +177,7 @@ public class DNSServer {
 
 					if (ans.getType() == DNS.TYPE_CNAME) {
 						String dataName = ((DNSRdataName) ans.getData()).getName();
-						
+
 						boolean match = false; // check if CNAME record data name is one of the answers
 						for (DNSResourceRecord ans2 : resolvedDnsPacket.getAnswers()) { 
 							String name = ans2.getName();
